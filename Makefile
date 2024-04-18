@@ -1,48 +1,24 @@
-################################################################################
-#
-#   RPMDrate - Ring polymer molecular dynamics simulations
-#
-#   Copyright (c) 2012 by Joshua W. Allen (jwallen@mit.edu)
-#                         Yury V. Suleimanov (ysuleyma@mit.edu)
-#                         William H. Green (whgreen@mit.edu)
-#
-#   Permission is hereby granted, free of charge, to any person obtaining a 
-#   copy of this software and associated documentation files (the "Software"), 
-#   to deal in the Software without restriction, including without limitation
-#   the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-#   and/or sell copies of the Software, and to permit persons to whom the 
-#   Software is furnished to do so, subject to the following conditions:
-#
-#   The above copyright notice and this permission notice shall be included in
-#   all copies or substantial portions of the Software.
-#
-#   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-#   THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-#   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-#   DEALINGS IN THE SOFTWARE. 
-#
-################################################################################
+files=rpmdrate/_main.pyf rpmdrate/_math.f90 rpmdrate/_surface.f90 rpmdrate/_main.f90 rpmdrate/blas_lapack.f90 -m rpmdrate._main
+compiler= --compiler=intelem --fcompiler=intelem
+python=python3
 
 .PHONY: all build install test clean
 
 all: build
 
 build:
-	python setup.py build_ext --build-lib . --build-temp build
-	
-install:
-	python setup.py install
+
+	$(python) -m numpy.f2py -c rpmdrate/_surface.f90 -m rpmdrate._surface 
+	$(python) -m numpy.f2py -c $(files)  $(compiler)    
 
 test:
-	python setup.py test
+
+	$(python) rpmdrate/test.py
 
 clean:
-	python setup.py clean --build-temp build
 	rm -rf build/
-	find ./rpmdrate -name *.pyc -exec rm -f '{}' \;
-	find ./rpmdrate -name *.pyo -exec rm -f '{}' \;
-	find ./rpmdrate -name *.pyd -exec rm -f '{}' \;
-	find ./rpmdrate -name *.so -exec rm -f '{}' \;
+	rm -rf rpmdrate/*.pyc
+	rm -rf rpmdrate/*.pyo
+	rm -rf rpmdrate/*.pyd
+	rm -rf rpmdrate/*.so 
+	rm -rf rpmdrate/__pycache__/*pyc
