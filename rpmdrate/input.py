@@ -5,9 +5,9 @@
 #
 #   RPMDrate - Bimolecular reaction rates via ring polymer molecular dynamics
 #
-#   Copyright (c) 2012 by Joshua W. Allen (jwallen@mit.edu)
-#                         William H. Green (whgreen@mit.edu)
-#                         Yury V. Suleimanov (ysuleyma@mit.edu, ysuleyma@princeton.edu)
+#   Copyright (c) 2013 by Yury V. Suleimanov (ysuleyma@mit.edu, ysuleyma@princeton.edu)
+#                         Joshua W. Allen (jwallen@mit.edu)
+#                         William H. Green (whgreen@mit.edu)                         
 #
 #   Permission is hereby granted, free of charge, to any person obtaining a 
 #   copy of this software and associated documentation files (the "Software"), 
@@ -137,11 +137,12 @@ def loadInputFile(path, T, Nbeads, processes=1):
     
     sys.path.append(os.path.dirname(path))
     f = open(path, 'r')
-    try:
-        exec f in global_context, local_context
-    except (NameError, TypeError, SyntaxError), e:
-        logging.error('The input file {0!r} was invalid:'.format(path))
-        raise
+    # print(f.read())
+    # try:
+    exec( f.read(),global_context,local_context)
+    # except (NameError, TypeError, SyntaxError), e:
+    #     logging.error('The input file {0!r} was invalid:'.format(path))
+    #     raise
     f.close()
     sys.path.pop()
 
