@@ -498,7 +498,7 @@ contains
         ! Transform to normal mode space
         do i = 1, 3
             do j = 1, Natoms
-                v(i,j,:)=matmul (CC,v(i,j,:))
+                p(i,j,:)=matmul (CC,p(i,j,:))
                 q(i,j,:)=matmul (CC,q(i,j,:))
             end do
         end do
@@ -546,7 +546,7 @@ contains
         ! Transform back to Cartesian space
         do i = 1, 3
             do j = 1, Natoms
-                v(i,j,:)=matmul (ICC,v(i,j,:))
+                p(i,j,:)=matmul (ICC,p(i,j,:))
                 q(i,j,:)=matmul (ICC,q(i,j,:))
             end do
         end do
