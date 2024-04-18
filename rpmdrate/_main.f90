@@ -36,7 +36,9 @@ module system
     double precision :: mass(MAX_ATOMS)
     integer :: mode
     double precision :: pi = dacos(-1.0d0)
-    
+    double precision, allocatable :: CC(:,:)
+    double precision, allocatable :: ICC(:,:)
+    integer :: ALLCC = 0
     ! The type of thermostat (1 = Andersen, 2 = GLE)
     integer :: thermostat
     
@@ -496,8 +498,8 @@ contains
         ! Transform to normal mode space
         do i = 1, 3
             do j = 1, Natoms
-                call rfft(p(i,j,:), Nbeads)
-                call rfft(q(i,j,:), Nbeads)
+                v(i,j,:)=matmul (CC,v(i,j,:))
+                q(i,j,:)=matmul (CC,q(i,j,:))
             end do
         end do
 
@@ -544,8 +546,8 @@ contains
         ! Transform back to Cartesian space
         do i = 1, 3
             do j = 1, Natoms
-                call irfft(p(i,j,:), Nbeads)
-                call irfft(q(i,j,:), Nbeads)
+                v(i,j,:)=matmul (ICC,v(i,j,:))
+                q(i,j,:)=matmul (ICC,q(i,j,:))
             end do
         end do
 
