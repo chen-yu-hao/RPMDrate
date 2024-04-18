@@ -5,9 +5,9 @@
 #
 #   RPMDrate - Bimolecular reaction rates via ring polymer molecular dynamics
 #
-#   Copyright (c) 2012 by Joshua W. Allen (jwallen@mit.edu)
-#                         William H. Green (whgreen@mit.edu)
-#                         Yury V. Suleimanov (ysuleyma@mit.edu, ysuleyma@princeton.edu)
+#   Copyright (c) 2013 by Yury V. Suleimanov (ysuleyma@mit.edu, ysuleyma@princeton.edu)
+#                         Joshua W. Allen (jwallen@mit.edu)
+#                         William H. Green (whgreen@mit.edu)                         
 #
 #   Permission is hereby granted, free of charge, to any person obtaining a 
 #   copy of this software and associated documentation files (the "Software"), 
@@ -50,6 +50,7 @@ import sys
 import time
 import argparse
 import logging
+import os
 
 ################################################################################
 
@@ -154,7 +155,6 @@ if __name__ == '__main__':
     
     # Parse the command-line arguments (requires the argparse module)
     args = parseCommandLineArguments()
-    
     # Determine the output directory
     outputDirectory = os.path.dirname(os.path.abspath(args.file[0]))
     
@@ -189,3 +189,7 @@ if __name__ == '__main__':
     
     # Print some information to the end of the log
     logFooter()
+    # if int(args.T[0])==float(args.T[0]):
+    #     os.system("python fan_pic_v1.0.py -t %s -n %s"%(str(int(args.T[0])), str(args.Nbeads[0])))
+    # else:
+    #     os.system("python fan_pic_v1.0.py -t %s -n %s"%(str(args.T[0])), str(args.Nbeads[0]))
