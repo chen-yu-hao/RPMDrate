@@ -272,6 +272,56 @@ class RPMD:
         system.mode = self.mode
         self.reactants.activate(module=reactants)
         self.thermostat.activate(module=system, Natoms=Natoms, Nbeads=Nbeads)
+
+        numpy.pi=numpy.arccos(numpy.longdouble(-1))
+        C=numpy.zeros([self.Nbeads,self.Nbeads],dtype=numpy.longdouble)
+        factor=numpy.sqrt(numpy.longdouble(1.0)/numpy.longdouble(self.Nbeads),dtype=numpy.longdouble)
+        N=numpy.longdouble(self.Nbeads)
+        for k in range(self.Nbeads):
+            for j in range(self.Nbeads):
+                if k==0:
+                    C[j,k]=factor
+                elif k<=N/2-1:
+                    C[j,k]=factor*numpy.cos(2*numpy.pi*numpy.longdouble(j)*numpy.longdouble(k)/N)
+                elif k==N/2:
+                    C[j,k]=factor*(numpy.longdouble(-1))**numpy.longdouble(j)
+                else:
+                    C[j,k]=factor*numpy.sin(2*numpy.pi*numpy.longdouble(j)*numpy.longdouble(k)/N)
+
+        iCx=numpy.zeros([self.Nbeads,self.Nbeads],dtype=numpy.complex256)
+        iCC=numpy.zeros([self.Nbeads,self.Nbeads],dtype=numpy.complex256)
+        iCx[0,0]=numpy.longdouble(1)
+        iCx[int(self.Nbeads/2),int(self.Nbeads/2)]=1
+
+        for k in range(1,int(self.Nbeads/2)):
+        #     print(k)
+            iCx[k,k]=numpy.longcomplex(1)
+            iCx[k,self.Nbeads-k]=numpy.longcomplex(0-1j)
+            
+        for k in range(int(self.Nbeads/2)+1,int(self.Nbeads)):
+        #     print(k)
+            iCx[k,k]=numpy.longcomplex(0+1j)
+            iCx[k,self.Nbeads-k]=numpy.longcomplex(1)
+            
+        for k in range(self.Nbeads):
+            for j in range(self.Nbeads):   
+                iCC[k,j]=factor*numpy.exp(numpy.longcomplex(-2)*numpy.pi*numpy.longcomplex(j*k)/N*numpy.longcomplex(0+1.0j))
+                
+        C=C.T
+        iCC=numpy.dot(iCC,iCx).real
+        # import matplotlib.pyplot as plt
+        # plt.imshow(numpy.dot(iCC,C))
+        # plt.colorbar()
+        # plt.show()
+        #################################################################################################################
+        #init the dft matrix in rpmdrate_main
+        #################################################################################################################
+        system.init_dft_cc(C,iCC,self.Nbeads)
+        #################################################################################################################
+
+
+
+
         
         Nts = len(self.transitionStates)
         Nforming_bonds = max([ts.formingBonds.shape[0] for ts in self.transitionStates])
