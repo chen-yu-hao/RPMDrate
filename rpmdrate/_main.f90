@@ -471,7 +471,21 @@ contains
         t = t + dt
 
     end subroutine verlet_step
-
+    
+subroutine init_dft_CC(Nbeads,dftCC,idftCC)
+        implicit none
+        integer, intent(in) :: Nbeads
+        double precision, intent(in) :: dftCC(Nbeads,Nbeads)
+        double precision, intent(in) :: idftCC(Nbeads,Nbeads)
+        if (ALLCC==0) then
+          allocate(CC(Nbeads,Nbeads))
+          allocate(ICC(Nbeads,Nbeads))
+          CC=dftCC
+          ICC=idftCC
+          ALLCC=1
+        end if
+        ! write(*,*)CC
+      end subroutine init_dft_CC
     ! Update the positions and momenta of each atom in each free ring polymer
     ! bead for the term in the Hamiltonian describing the harmonic free ring
     ! polymer interactions. This is most efficiently done in normal mode space;
