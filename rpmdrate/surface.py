@@ -5,9 +5,9 @@
 #
 #   RPMDrate - Bimolecular reaction rates via ring polymer molecular dynamics
 #
-#   Copyright (c) 2012 by Joshua W. Allen (jwallen@mit.edu)
-#                         William H. Green (whgreen@mit.edu)
-#                         Yury V. Suleimanov (ysuleyma@mit.edu, ysuleyma@princeton.edu)
+#   Copyright (c) 2013 by Yury V. Suleimanov (ysuleyma@mit.edu, ysuleyma@princeton.edu)
+#                         Joshua W. Allen (jwallen@mit.edu)
+#                         William H. Green (whgreen@mit.edu)                         
 #
 #   Permission is hereby granted, free of charge, to any person obtaining a 
 #   copy of this software and associated documentation files (the "Software"), 
@@ -68,8 +68,8 @@ class TransitionState:
         
         self.geometry = numpy.array(quantity.convertLength(geometry, "bohr")).T
 
-        self.formingBonds = numpy.array(formingBonds, numpy.int)
-        self.breakingBonds = numpy.array(breakingBonds, numpy.int)
+        self.formingBonds = numpy.array(formingBonds, int)
+        self.breakingBonds = numpy.array(breakingBonds, int)
         
         Nforming_bonds = self.formingBonds.shape[0]
         Nbreaking_bonds = self.breakingBonds.shape[0]
@@ -167,8 +167,8 @@ class Reactants:
     def __init__(self, atoms, reactant1Atoms, reactant2Atoms, Rinf):
         self.atoms = atoms
         self.mass = numpy.array([atomicMass[atom] for atom in atoms]) * 0.001 / constants.Na / 9.1093826e-31
-        self.reactant1Atoms = numpy.array(reactant1Atoms, numpy.int)
-        self.reactant2Atoms = numpy.array(reactant2Atoms, numpy.int)
+        self.reactant1Atoms = numpy.array(reactant1Atoms, int)
+        self.reactant2Atoms = numpy.array(reactant2Atoms, int)
         self.Rinf = float(quantity.convertLength(Rinf, "bohr"))
 
         self.totalMass1 = sum([self.mass[j-1] for j in self.reactant1Atoms])
