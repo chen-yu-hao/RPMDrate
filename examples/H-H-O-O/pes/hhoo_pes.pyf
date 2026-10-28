@@ -1,0 +1,28 @@
+! Explicit public interface: do not wrap private module state.
+python module hhoo_pes
+    interface
+        subroutine hhoo_1014_init(weights_path,result)
+            character*(*) intent(in) :: weights_path
+            integer intent(out) :: result
+        end subroutine hhoo_1014_init
+        subroutine initialize_potential()
+        end subroutine initialize_potential
+        subroutine hhoo_1014_grad(x,v,g)
+            double precision dimension(3,4), intent(in) :: x
+            double precision intent(out) :: v
+            double precision dimension(3,4), intent(out) :: g
+        end subroutine hhoo_1014_grad
+        subroutine hhoo_1014(x,v)
+            double precision dimension(3,4), intent(in) :: x
+            double precision intent(out) :: v
+        end subroutine hhoo_1014
+        subroutine get_potential(q,V,dVdq,Natoms,Nbeads,result)
+            integer intent(hide), depend(q) :: Natoms=shape(q,1)
+            integer intent(hide), depend(q) :: Nbeads=shape(q,2)
+            double precision dimension(3,Natoms,Nbeads), intent(in) :: q
+            double precision dimension(Nbeads), intent(out) :: V
+            double precision dimension(3,Natoms,Nbeads), intent(out) :: dVdq
+            integer intent(out) :: result
+        end subroutine get_potential
+    end interface
+end python module hhoo_pes

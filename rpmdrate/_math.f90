@@ -113,7 +113,9 @@ subroutine randomn(rn)
 
 end subroutine randomn
 
-! Compute the real fast Fourier transform of the given array of data.
+! Compute the real Fourier transform of the given array of data.
+! This fallback keeps the legacy half-complex API without requiring FFTW;
+! production free-ring propagation now uses the Cayley solver in _main.f90.
 ! Parameters:
 !   x - The array of data to transform
 !   N - The length of the array of data
@@ -125,28 +127,32 @@ subroutine rfft(x,N)
     integer, intent(in) :: N
     double precision, intent(inout) :: x(N)
 
-    integer, parameter :: Nmax = 1024
-    integer :: Np
-    double precision :: copy(Nmax), factor
-    integer*8 :: plan
+    integer :: k, j, nhalf
+    double precision :: factor, angle
+    complex(kind=8) :: z(N), phase
 
-    data Np /0/
-    save copy, factor, plan, Np
+    factor = 1.d0 / dsqrt(dble(N))
+    z = (0.d0, 0.d0)
+    do k = 0, N - 1
+        do j = 0, N - 1
+            angle = -2.d0 * dacos(-1.d0) * dble(k*j) / dble(N)
+            phase = cmplx(dcos(angle), dsin(angle), kind=8)
+            z(k+1) = z(k+1) + cmplx(x(j+1), 0.d0, kind=8) * phase
+        end do
+    end do
 
-    if (N .ne. Np) then
-        if (Np .ne. 0) call dfftw_destroy_plan(plan)
-        call dfftw_plan_r2r_1d(plan,N,copy,copy,0,64)
-        factor = dsqrt(1.d0/N)
-        Np = N
-    end if
-
-    copy(1:N) = x
-    call dfftw_execute(plan)
-    x = factor * copy(1:N)
+    x = 0.d0
+    x(1) = factor * dble(z(1))
+    nhalf = (N - 1) / 2
+    do k = 1, nhalf
+        x(k+1) = factor * dble(z(k+1))
+        x(N-k+1) = factor * dimag(z(k+1))
+    end do
+    if (mod(N,2) .eq. 0) x(N/2+1) = factor * dble(z(N/2+1))
 
 end subroutine rfft
 
-! Compute the inverse real fast Fourier transform of the given array of data.
+! Compute the inverse real Fourier transform of half-complex data.
 ! Parameters:
 !   x - The array of data to transform, in half-complex form
 !   N - The length of the array of data
@@ -158,27 +164,29 @@ subroutine irfft(x,N)
     integer, intent(in) :: N
     double precision, intent(inout) :: x(N)
 
-    integer, parameter :: Nmax = 1024
-    integer :: Np
-    double precision :: copy(Nmax), factor
-    integer*8 :: plan
+    integer :: k, j, nhalf
+    double precision :: factor, angle
+    complex(kind=8) :: z(N), sumz, phase
 
-    data Np /0/
-    save copy, factor, plan, Np
+    factor = 1.d0 / dsqrt(dble(N))
+    z = (0.d0, 0.d0)
+    z(1) = cmplx(x(1), 0.d0, kind=8)
+    nhalf = (N - 1) / 2
+    do k = 1, nhalf
+        z(k+1) = cmplx(x(k+1), x(N-k+1), kind=8)
+        z(N-k+1) = dconjg(z(k+1))
+    end do
+    if (mod(N,2) .eq. 0) z(N/2+1) = cmplx(x(N/2+1), 0.d0, kind=8)
 
-    if (N .ne. Np) then
-        ! The input array is a different length than the last array, so we
-        ! must generate a new FFTW plan for the transform
-        ! First delete the previous plan
-        if (Np .ne. 0) call dfftw_destroy_plan(plan)
-        call dfftw_plan_r2r_1d(plan,N,copy,copy,1,64)
-        factor = dsqrt(1.d0/N)
-        Np = N
-    end if
-
-    copy(1:N) = x
-    call dfftw_execute(plan)
-    x = factor * copy(1:N)
+    do j = 0, N - 1
+        sumz = (0.d0, 0.d0)
+        do k = 0, N - 1
+            angle = 2.d0 * dacos(-1.d0) * dble(k*j) / dble(N)
+            phase = cmplx(dcos(angle), dsin(angle), kind=8)
+            sumz = sumz + z(k+1) * phase
+        end do
+        x(j+1) = factor * dble(sumz)
+    end do
 
 end subroutine irfft
 

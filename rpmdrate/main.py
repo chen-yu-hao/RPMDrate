@@ -59,15 +59,21 @@ def runUmbrellaTrajectory(rpmd, xi_current, p, q, equilibrationSteps, evolutionS
     first and second moments of the reaction coordinate at each time step.
     """
     if xi_range is None: xi_range = 0.0
+    if isinstance(saveTrajectory, (tuple, list)):
+        save_trajectory, everycount = saveTrajectory
+    else:
+        save_trajectory, everycount = int(bool(saveTrajectory)), 1
+    if everycount <= 0:
+        raise ValueError('The trajectory output interval must be positive.')
     rpmd.activate()
     steps = 0
     # print(saveTrajectory)
     while steps < evolutionSteps:
         p1 = numpy.asfortranarray(p.copy())
         q1 = numpy.asfortranarray(q.copy())
-        result = system.equilibrate(0, p1, q1,equilibrationSteps, xi_current, rpmd.potential, kforce, False, saveTrajectory[0],strxi,Nwindows,saveTrajectory[1])
+        result = system.equilibrate(0, p1, q1,equilibrationSteps, xi_current, rpmd.potential, kforce, False, save_trajectory,strxi,Nwindows,everycount)
         if result != 0: continue
-        dav, dav2, actualSteps, result = system.umbrella_trajectory(0, p1, q1, evolutionSteps - steps, xi_current, rpmd.potential, kforce, xi_range, saveTrajectory[0],strxi,Nwindows,saveTrajectory[1])
+        dav, dav2, actualSteps, result = system.umbrella_trajectory(0, p1, q1, evolutionSteps - steps, xi_current, rpmd.potential, kforce, xi_range, save_trajectory,strxi,Nwindows,everycount)
         steps += actualSteps
         if result != 0: continue
     
@@ -449,7 +455,10 @@ class RPMD:
             # Equilibrate in this window
             logging.info('Generating configuration at xi = {0:.4f} for {1:g} ps...'.format(xi_current, evolutionSteps * self.dt * 2.418884326505e-5))
             p = self.sampleMomentum(Nbeads=Nbeads)
-            result = system.equilibrate(0, p, q, evolutionSteps, xi_current, self.potential, kforce[l], False, False)
+            result = system.equilibrate(
+                0, p, q, evolutionSteps, xi_current, self.potential, kforce[l],
+                False, False, '{0:.8f}'.format(xi_current), l + 1, 1,
+            )
             logging.info('Finished generating configuration at xi = {0:.4f}.'.format(xi_current))
             q_initial[:,:,l] = q[:,:,0]
                         
@@ -462,7 +471,10 @@ class RPMD:
             # Equilibrate in this window
             logging.info('Generating configuration at xi = {0:.4f} for {1:g} ps...'.format(xi_current, evolutionSteps * self.dt * 2.418884326505e-5))
             p = self.sampleMomentum(Nbeads=Nbeads)
-            result = system.equilibrate(0, p, q, evolutionSteps, xi_current, self.potential, kforce[l], False, False)
+            result = system.equilibrate(
+                0, p, q, evolutionSteps, xi_current, self.potential, kforce[l],
+                False, False, '{0:.8f}'.format(xi_current), l + 1, 1,
+            )
             logging.info('Finished generating configuration at xi = {0:.4f}.'.format(xi_current))
             q_initial[:,:,l] = q[:,:,0]
         
@@ -929,7 +941,11 @@ class RPMD:
             while result != 0:
                 q = numpy.asfortranarray(q0.copy())
                 p = self.sampleMomentum()            
-                result = system.equilibrate(0, p, q, equilibrationSteps, self.xi_current, self.potential, 0.0, True, saveParentTrajectory)
+                result = system.equilibrate(
+                    0, p, q, equilibrationSteps, self.xi_current, self.potential,
+                    0.0, True, saveParentTrajectory,
+                    '{0:.8f}'.format(self.xi_current), 0, 1,
+                )
             
             logging.info('Finished equilibrating parent trajectory.')
             logging.info('')
@@ -977,11 +993,19 @@ class RPMD:
                 # Further evolve parent trajectory while constraining to dividing
                 # surface and sampling from Andersen thermostat
                 logging.info('Evolving parent trajectory to {0:g} ps...'.format((parentIter+1) * childSamplingSteps * self.dt * 2.418884326505e-5))
-                result = system.equilibrate(0, p, q, childSamplingSteps, self.xi_current, self.potential, 0.0, True, saveParentTrajectory)
+                result = system.equilibrate(
+                    0, p, q, childSamplingSteps, self.xi_current, self.potential,
+                    0.0, True, saveParentTrajectory,
+                    '{0:.8f}'.format(self.xi_current), 0, 1,
+                )
                 while result != 0:
                     q = numpy.asfortranarray(q0.copy())
                     p = self.sampleMomentum()            
-                    result = system.equilibrate(0, p, q, equilibrationSteps, self.xi_current, self.potential, 0.0, True, saveParentTrajectory)
+                    result = system.equilibrate(
+                        0, p, q, equilibrationSteps, self.xi_current, self.potential,
+                        0.0, True, saveParentTrajectory,
+                        '{0:.8f}'.format(self.xi_current), 0, 1,
+                    )
                 
                 parentIter += 1
             

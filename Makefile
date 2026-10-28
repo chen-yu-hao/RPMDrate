@@ -1,5 +1,5 @@
-files=rpmdrate/_main.pyf rpmdrate/_math.f90 rpmdrate/_surface.f90 rpmdrate/_main.f90 rpmdrate/blas_lapack.f90 -m rpmdrate._main
-compiler= --compiler=intelem --fcompiler=intelem
+files=rpmdrate/_main.pyf rpmdrate/_math.f90 rpmdrate/_surface.f90 rpmdrate/_main.f90 rpmdrate/blas_lapack.f90
+compiler=--fcompiler=gnu95 --f90flags='-O3 -ffree-line-length-none'
 python=python3
 
 .PHONY: all build install test clean
@@ -9,7 +9,8 @@ all: build
 build:
 
 	$(python) -m numpy.f2py -c rpmdrate/_surface.f90 -m rpmdrate._surface 
-	$(python) -m numpy.f2py -c $(files)  $(compiler)    
+	$(python) -m numpy.f2py -c $(files) $(compiler)
+	mv _main*.so rpmdrate/
 
 test:
 

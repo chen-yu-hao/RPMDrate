@@ -107,6 +107,14 @@ def loadInputFile(path, T, Nbeads, processes=1):
     Load the RPMD input file located at `path`.
     """
     global reactants, transitionState, equivalentTransitionStates, thermostat, jobList, getPotential
+
+    path = os.path.abspath(path)
+    if T <= 0:
+        raise InputError('The temperature must be positive.')
+    if Nbeads <= 0:
+        raise InputError('The number of beads must be positive.')
+    if processes <= 0:
+        raise InputError('The number of processes must be positive.')
     
     logging.info('Reading input file {0!r}...'.format(path))
     
@@ -118,7 +126,10 @@ def loadInputFile(path, T, Nbeads, processes=1):
     
     errorList = []
     
-    global_context = {}
+    global_context = {
+        '__file__': path,
+        '__name__': '__rpmdrate_input__',
+    }
     local_context = {
         'reactants': setReactants,
         'transitionState': setTransitionState,
@@ -135,31 +146,38 @@ def loadInputFile(path, T, Nbeads, processes=1):
         'Window': Window,
     }
     
+    global_context.update(local_context)
     sys.path.append(os.path.dirname(path))
-    f = open(path, 'r')
-    # print(f.read())
-    # try:
-    exec( f.read(),global_context,local_context)
-    # except (NameError, TypeError, SyntaxError), e:
-    #     logging.error('The input file {0!r} was invalid:'.format(path))
-    #     raise
-    f.close()
-    sys.path.pop()
+    try:
+        with open(path, 'r') as f:
+            exec(f.read(), global_context)
+    finally:
+        sys.path.pop()
+    local_context = global_context
 
     label = local_context.get('label', '')
     getPotential = local_context.get('get_potential', None)
     initializePotential = local_context.get('initialize_potential', None)
     randomSeed = local_context.get('random_seed', None)
     
-    if not getPotential:
+    if not callable(getPotential):
         errorList.append('No potential energy surface supplied; you must specify a PES via the function get_potential().')
+    if initializePotential is not None and not callable(initializePotential):
+        errorList.append('The initialize_potential entry must be callable.')
+
+    if reactants is None:
+        errorList.append('No reactants supplied; you must specify a reactants() block.')
+    if transitionState is None:
+        errorList.append('No transition state supplied; you must specify a transitionState() block.')
     
     if thermostat is None:
         errorList.append('No thermostat supplied; please provide a thermostat() block.')
     else:
         thermostatType, thermostatArgs = thermostat
         
-        if thermostatType.lower() == 'andersen':
+        if not isinstance(thermostatType, str):
+            errorList.append('The thermostat type must be a string.')
+        elif thermostatType.lower() == 'andersen':
             samplingTime = thermostatArgs.get('samplingTime', None)
             thermostat = AndersenThermostat(samplingTime=samplingTime)
         elif thermostatType.lower() == 'gle':
@@ -173,54 +191,59 @@ def loadInputFile(path, T, Nbeads, processes=1):
                 C = (os.path.join(os.path.dirname(path), C[0]), C[1])
                 if not os.path.exists(C[0]):
                     errorList.append('Invalid path to C matrix for GLE thermostat.')
-            thermostat = GLEThermostat(A=A, C=C)
             if A is None:
                 errorList.append('To use the GLE thermostat, you must specify an A matrix.')
+            else:
+                try:
+                    thermostat = GLEThermostat(A=A, C=C)
+                except (TypeError, ValueError, OSError) as e:
+                    errorList.append('Invalid GLE thermostat matrices: {0}'.format(e))
         else:
             errorList.append('Invalid thermostat {0!r}; valid thermostats are Andersen and GLE.'.format(thermostatType))
     
     # Sanity checking of the specified breaking and forming bond pairs in the transition state
-    Nbonds = transitionState.formingBonds.shape[0]
-    if transitionState.breakingBonds.shape[0] != Nbonds:
-        errorList.append('Different number of forming and breaking bonds encountered in transition state; these must be paired.')
-    for formingBonds, breakingBonds in equivalentTransitionStates:
-        if len(formingBonds) != Nbonds or len(breakingBonds) != Nbonds:
-            errorList.append('Different number of forming and breaking bonds encountered in an equivalent transition state; these must correspond to those in the first transition state.')
-    for n in range(Nbonds):
-        atom1Found = transitionState.formingBonds[n,0] in transitionState.breakingBonds[n,:]
-        atom2Found = transitionState.formingBonds[n,1] in transitionState.breakingBonds[n,:]
-        if atom1Found and atom2Found:
-            errorList.append('In main transition state, forming bond ({0:d},{1:d}) is the same as a breaking bond ({2:d},{3:d}).'.format(
-                transitionState.formingBonds[n,0],
-                transitionState.formingBonds[n,1],
-                transitionState.breakingBonds[n,0],
-                transitionState.breakingBonds[n,1],
-            ))
-        elif not atom1Found and not atom2Found:
-            errorList.append('In main transition state, forming bond ({0:d},{1:d}) and breaking bond ({2:d},{3:d}) do not share an atom in common.'.format(
-                transitionState.formingBonds[n,0],
-                transitionState.formingBonds[n,1],
-                transitionState.breakingBonds[n,0],
-                transitionState.breakingBonds[n,1],
-            ))
-    for formingBonds, breakingBonds in equivalentTransitionStates:
+    if transitionState is not None:
+        Nbonds = transitionState.formingBonds.shape[0]
+        if transitionState.breakingBonds.shape[0] != Nbonds:
+            errorList.append('Different number of forming and breaking bonds encountered in transition state; these must be paired.')
+        for formingBonds, breakingBonds in equivalentTransitionStates:
+            if len(formingBonds) != Nbonds or len(breakingBonds) != Nbonds:
+                errorList.append('Different number of forming and breaking bonds encountered in an equivalent transition state; these must correspond to those in the first transition state.')
         for n in range(Nbonds):
-            atom1Found = formingBonds[n][0] in breakingBonds[n]
-            atom2Found = formingBonds[n][1] in breakingBonds[n]
+            atom1Found = transitionState.formingBonds[n,0] in transitionState.breakingBonds[n,:]
+            atom2Found = transitionState.formingBonds[n,1] in transitionState.breakingBonds[n,:]
             if atom1Found and atom2Found:
-                errorList.append('In an equivalent transition state, forming bond ({0:d},{1:d}) is the same as a breaking bond ({2:d},{3:d}).'.format(
-                    formingBonds[n][0],
-                    formingBonds[n][1],
-                    breakingBonds[n][0],
-                    breakingBonds[n][1],
+                errorList.append('In main transition state, forming bond ({0:d},{1:d}) is the same as a breaking bond ({2:d},{3:d}).'.format(
+                    transitionState.formingBonds[n,0],
+                    transitionState.formingBonds[n,1],
+                    transitionState.breakingBonds[n,0],
+                    transitionState.breakingBonds[n,1],
                 ))
             elif not atom1Found and not atom2Found:
-                errorList.append('In an equivalent transition state, forming bond ({0:d},{1:d}) and breaking bond ({2:d},{3:d}) do not share an atom in common.'.format(
-                    formingBonds[n][0],
-                    formingBonds[n][1],
-                    breakingBonds[n][0],
-                    breakingBonds[n][1],
+                errorList.append('In main transition state, forming bond ({0:d},{1:d}) and breaking bond ({2:d},{3:d}) do not share an atom in common.'.format(
+                    transitionState.formingBonds[n,0],
+                    transitionState.formingBonds[n,1],
+                    transitionState.breakingBonds[n,0],
+                    transitionState.breakingBonds[n,1],
                 ))
+        for formingBonds, breakingBonds in equivalentTransitionStates:
+            for n in range(Nbonds):
+                atom1Found = formingBonds[n][0] in breakingBonds[n]
+                atom2Found = formingBonds[n][1] in breakingBonds[n]
+                if atom1Found and atom2Found:
+                    errorList.append('In an equivalent transition state, forming bond ({0:d},{1:d}) is the same as a breaking bond ({2:d},{3:d}).'.format(
+                        formingBonds[n][0],
+                        formingBonds[n][1],
+                        breakingBonds[n][0],
+                        breakingBonds[n][1],
+                    ))
+                elif not atom1Found and not atom2Found:
+                    errorList.append('In an equivalent transition state, forming bond ({0:d},{1:d}) and breaking bond ({2:d},{3:d}) do not share an atom in common.'.format(
+                        formingBonds[n][0],
+                        formingBonds[n][1],
+                        breakingBonds[n][0],
+                        breakingBonds[n][1],
+                    ))
         
         
     if errorList:
