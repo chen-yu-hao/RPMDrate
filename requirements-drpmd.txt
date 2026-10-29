@@ -1,0 +1,4 @@
+# Python >= 3.10. No legacy f2py build is required for the direct-RPMD path.
+numpy>=1.24
+threadpoolctl>=3.1
+# GPU: additionally install the appropriate CUDA-enabled PyTorch build.

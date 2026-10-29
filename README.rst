@@ -9,6 +9,31 @@ RPMDrate is a free, open-source software package for using ring polymer
 molecular dynamics simulations to compute properties of chemical systems,
 including, but not limited to, chemical reaction rates.
 
+Direct RPMD with thermal initial states
+======================================
+
+The new Python 3 dRPMD entry point supports one trajectory on one CPU core,
+bead-distributed PES calls plus OpenMP Cayley dynamics, and batched CUDA PES
+evaluation. It includes NumPy and PyTorch implementations of the supplied HHOO
+five-network potential, complete thermal-state output, product classification,
+and flux-consistent channel-rate estimates with explicit unresolved outcomes.
+
+From the source checkout (Python 3.10+, GCC/OpenMP for multicore)::
+
+    python -m pip install -r requirements-drpmd.txt
+    make drpmd-native python=python
+    python -m rpmdrate.drpmd examples/drpmd/hhoo_smoke.json --mode serial --output drpmd-results-serial
+    python -m rpmdrate.drpmd examples/drpmd/hhoo_smoke.json --mode bead --workers 4 --output drpmd-results-bead
+    # Requires a suitable CUDA-enabled PyTorch installation and CUDA device:
+    python -m rpmdrate.drpmd examples/drpmd/hhoo_smoke.json --mode gpu --output drpmd-results-gpu
+    make drpmd-test python=python
+
+The smoke input is a short numerical check, not a converged rate calculation.
+For the full input contract, physical sampling, CPU/GPU scope and limitations,
+see the `Chinese dRPMD guide <documentation/users/drpmd.rst>`_. The new entry
+point does not require building the legacy Fortran/f2py extensions described
+below; the existing PMF/recrossing interface retains its own build requirements.
+
 License
 =======
 

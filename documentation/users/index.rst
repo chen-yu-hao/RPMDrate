@@ -12,3 +12,4 @@ RPMDrate User's Guide
     potential
     run
     output
+    drpmd

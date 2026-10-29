@@ -152,6 +152,10 @@ def logFooter(level=logging.INFO):
 ################################################################################
 
 if __name__ == '__main__':
+    # The direct-trajectory path is independent of the legacy f2py TS modules.
+    if len(sys.argv) > 1 and sys.argv[1] == '--drpmd':
+        from rpmdrate.drpmd import main as drpmd_main
+        sys.exit(drpmd_main(sys.argv[2:]))
     
     # Parse the command-line arguments (requires the argparse module)
     args = parseCommandLineArguments()
