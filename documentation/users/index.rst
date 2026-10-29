@@ -12,3 +12,7 @@ RPMDrate User's Guide
     potential
     run
     output
+    drpmd
+    drpmd_parallel
+    drpmd_pes
+    drpmd_native

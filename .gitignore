@@ -17,7 +17,12 @@ build/*
 documentation/_build/*
 
 # Examples
-/examples/
+/examples/*
+!/examples/drpmd/
+
+# Direct-RPMD output directories (never commit trajectory data by accident)
+/drpmd-results*/
+*.mod
 
 # Eclipse project files
 .project
