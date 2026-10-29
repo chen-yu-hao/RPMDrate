@@ -1,0 +1,40 @@
+name: Four HHOO trajectories (smoke)
+on:
+  push:
+    branches: ["test/four-hhoo-trajectories"]
+  pull_request:
+    branches: ["feat/thermal-drpmd"]
+    paths: [".github/workflows/four-hhoo-smoke.yml"]
+permissions:
+  contents: read
+jobs:
+  four-trajectories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-drpmd.txt
+      - name: Run four trajectories with original HHOO smoke settings
+        env:
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: |
+          python -m rpmdrate.drpmd examples/drpmd/hhoo_smoke.json --mode serial --trajectories 4 --output four-hhoo-results
+          echo "=== INDIVIDUAL TRAJECTORIES ==="
+          cat four-hhoo-results/trajectories.csv
+          echo "=== SUMMARY ==="
+          cat four-hhoo-results/summary.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path("four-hhoo-results/summary.json").read_text())
+          assert x["trajectories"] == 4, x
+          print("CONFIRMED: all four trajectories were executed")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hhoo-four-trajectories
+          path: four-hhoo-results/
