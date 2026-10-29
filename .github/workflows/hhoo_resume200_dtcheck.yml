@@ -1,0 +1,192 @@
+name: "HHOO: 122 continuations to 200ps and 2OH timestep audit"
+on:
+  push:
+    branches: ["experiment/hhoo-resume200ps-dtcheck"]
+    paths:
+      - "benchmarks/hhoo_followup.py"
+      - ".github/workflows/hhoo_resume200_dtcheck.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hhoo-resume200-dtcheck
+  cancel-in-progress: false
+jobs:
+  validate:
+    name: Verify 512 originals and 122 saved states; test exact restarts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-drpmd.txt
+      - run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
+      - name: Record runtime and source revision
+        run: |
+          git rev-parse HEAD
+          python -m pip freeze
+          nproc
+      - name: Download immutable original eight shards
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40909399592
+          pattern: hhoo-b*-s*
+          path: source-data
+          merge-multiple: false
+      - name: Test original-loop equality and checkpoint restarts
+        run: |
+          python -m py_compile benchmarks/hhoo_followup.py
+          python -m benchmarks.hhoo_followup selftest
+      - name: Validate state provenance and plan all 122 continuations
+        run: python -m benchmarks.hhoo_followup prepare --source source-data --out plan
+      - name: Archive immutable continuation ledger
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hhoo-200ps-plan
+          path: plan/
+          retention-days: 30
+          if-no-files-found: warn
+
+  audit:
+    name: Replay two 2OH candidates at dt=0.1, 0.05, 0.025fs
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-drpmd.txt matplotlib
+      - run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40909399592
+          pattern: hhoo-b*-s*
+          path: source-data
+          merge-multiple: false
+      - name: Run six same-initial-state energy/classification audits
+        run: python -m benchmarks.hhoo_followup group --kind audit --source source-data --out audit-results
+      - name: Publish timestep comparison in job summary
+        if: always()
+        run: |
+          if [ -f audit-results/timestep_comparison.csv ]; then
+            echo '## Same-initial-state timestep audit (not additional ensemble samples)' >> "$GITHUB_STEP_SUMMARY"
+            cat audit-results/timestep_comparison.csv >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve audit traces, checkpoints, figures and failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hhoo-2oh-dt-audit
+          path: audit-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+  continue:
+    name: Resume subset ${{ matrix.part }} of 16 to total 200ps
+    needs: [validate, audit]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    env:
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-drpmd.txt
+      - run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40909399592
+          pattern: hhoo-b*-s*
+          path: source-data
+          merge-multiple: false
+      - name: Continue four trajectories concurrently, each on one CPU
+        run: |
+          python -m benchmarks.hhoo_followup group --kind continuation \
+            --part ${{ matrix.part }} --source source-data --out continuation-${{ matrix.part }}
+      - name: Preserve completed and partial states even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hhoo-continuation-${{ matrix.part }}
+          path: continuation-${{ matrix.part }}/
+          retention-days: 30
+          if-no-files-found: warn
+
+  aggregate:
+    name: Update 512-trajectory ledger without changing original denominators
+    needs: [validate, audit, continue]
+    if: ${{ always() && needs.validate.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-drpmd.txt
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40909399592
+          pattern: hhoo-b*-s*
+          path: source-data
+          merge-multiple: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: hhoo-continuation-*
+          path: all-results
+          merge-multiple: false
+      - run: |
+          mkdir -p all-results
+          python -m benchmarks.hhoo_followup aggregate --source source-data --results all-results --out final-summary
+      - name: Preserve complete or conservative partial statistics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hhoo-200ps-updated-512-summary
+          path: final-summary/
+          retention-days: 30
+          if-no-files-found: warn
