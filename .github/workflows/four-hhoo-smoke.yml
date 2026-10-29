@@ -1,4 +1,4 @@
-name: Four HHOO trajectories (smoke)
+name: HHOO long trajectory (20 ps)
 on:
   push:
     branches: ["test/four-hhoo-trajectories"]
@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements-drpmd.txt matplotlib
-      - name: Run four trajectories with original HHOO smoke settings
+      - name: Run one HHOO trajectory up to 20 ps
         env:
           OPENBLAS_NUM_THREADS: "1"
           MKL_NUM_THREADS: "1"
@@ -26,26 +26,57 @@ jobs:
           import json
           from pathlib import Path
           cfg = json.loads(Path("examples/drpmd/hhoo_smoke.json").read_text())
-          cfg["evolution_steps"] = 10000  # 1 ps, dt=0.1 fs
-          cfg["trajectories"] = 4
-          cfg["save_every"] = 1
+          cfg["evolution_steps"] = 200000  # 20 ps, dt=0.1 fs
+          cfg["trajectories"] = 1
+          cfg["save_every"] = 10
           cfg["potential"]["weights"] = str(Path("examples/H-H-O-O/pes/txt_1014").resolve())
-          Path("four-hhoo-100fs.json").write_text(json.dumps(cfg))
+          Path("one-hhoo-20ps.json").write_text(json.dumps(cfg))
           PY
-          python -m rpmdrate.drpmd four-hhoo-100fs.json --mode serial --output four-hhoo-results
-          python examples/drpmd/analyze_four_trajectories.py
+          python -m rpmdrate.drpmd one-hhoo-20ps.json --mode serial --output one-hhoo-20ps-results
+          python - <<'PY'
+          import csv,json,numpy as np
+          from pathlib import Path
+          p=Path("one-hhoo-20ps-results")
+          rows=list(csv.DictReader((p/"trajectory_000001.csv").open()))
+          xyz=np.array([[[float(r[f"{a}{i}_{axis}_bohr"]) for axis in "xyz"] for i,a in enumerate(["H","H","O","O"])] for r in rows])
+          time=np.array([float(r["time_fs"]) for r in rows])
+          masses=np.array([1.00782503223,1.00782503223,15.99491461957,15.99491461957])
+          center=(xyz[:,1:4,:]*masses[None,1:4,None]).sum(axis=1)/sum(masses[1:])
+          rcom=np.linalg.norm(xyz[:,0]-center,axis=1)
+          def bond(i,j): return np.linalg.norm(xyz[:,i]-xyz[:,j],axis=1)
+          bonds={"H0-H1":bond(0,1),"O2-O3":bond(2,3),"H0-O2":bond(0,2),"H0-O3":bond(0,3),"H1-O2":bond(1,2),"H1-O3":bond(1,3),"R_COM":rcom}
+          output={}
+          for name,value in bonds.items():
+              k=int(np.argmin(value))
+              output[name]={"min":float(value[k]),"min_t_fs":float(time[k]),"final":float(value[-1]),"max":float(value.max())}
+          output["samples"]=[{"time_fs":float(time[j]),"R_COM":float(rcom[j]),"H0-O2":float(bonds["H0-O2"][j]),"H0-O3":float(bonds["H0-O3"][j]),"O-O":float(bonds["O2-O3"][j])} for j in range(0,len(time),max(1,len(time)//20))]
+          output["saved_frames"]=len(time)
+          (p/"long_distance_summary.json").write_text(json.dumps(output,indent=2))
+          print("LONG_DISTANCE_SUMMARY",json.dumps(output))
+          import matplotlib
+          matplotlib.use("Agg")
+          import matplotlib.pyplot as plt
+          fig,axs=plt.subplots(3,1,figsize=(11,9),sharex=True)
+          axs[0].plot(time,rcom);axs[0].set_ylabel("H-HO2 COM (bohr)")
+          for label in ("H0-O2","H0-O3","H1-O2","H1-O3"): axs[1].plot(time,bonds[label],label=label,linewidth=.8)
+          axs[1].set_ylabel("H-O (bohr)");axs[1].legend(ncol=4)
+          for label in ("H0-H1","O2-O3"): axs[2].plot(time,bonds[label],label=label)
+          axs[2].set_ylabel("H-H / O-O (bohr)");axs[2].set_xlabel("Time (fs)");axs[2].legend()
+          for ax in axs: ax.grid(alpha=.25)
+          fig.tight_layout();fig.savefig(p/"long_distance_plot.png",dpi=160);plt.close(fig)
+          PY
           echo "=== INDIVIDUAL TRAJECTORIES ==="
-          cat four-hhoo-results/trajectories.csv
+          cat one-hhoo-20ps-results/trajectories.csv
           echo "=== SUMMARY ==="
-          cat four-hhoo-results/summary.json
+          cat one-hhoo-20ps-results/summary.json
           python - <<'PY'
           import json
           from pathlib import Path
-          x=json.loads(Path("four-hhoo-results/summary.json").read_text())
-          assert x["trajectories"] == 4, x
-          print("CONFIRMED: all four trajectories were executed")
+          x=json.loads(Path("one-hhoo-20ps-results/summary.json").read_text())
+          assert x["trajectories"] == 1, x
+          print("CONFIRMED: long trajectory execution complete")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: hhoo-four-trajectories
-          path: four-hhoo-results/
+          name: hhoo-one-20ps-trajectory
+          path: one-hhoo-20ps-results/
