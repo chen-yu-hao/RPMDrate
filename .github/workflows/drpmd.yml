@@ -15,6 +15,7 @@ on:
       - "examples/H-H-O-O/pes/hhoo_drpmd_omp.f90"
       - "examples/native_pes/**"
       - "benchmarks/pes/**"
+      - "benchmarks/scheduling/**"
       - "examples/drpmd/**"
       - "requirements-drpmd*.txt"
       - "Makefile"
@@ -33,6 +34,7 @@ on:
       - "examples/H-H-O-O/pes/hhoo_drpmd_omp.f90"
       - "examples/native_pes/**"
       - "benchmarks/pes/**"
+      - "benchmarks/scheduling/**"
       - "examples/drpmd/**"
       - "requirements-drpmd*.txt"
       - "Makefile"
@@ -76,6 +78,16 @@ jobs:
         run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
       - name: Run direct-RPMD regressions
         run: python -m unittest discover -s tests -t . -p 'drpmd*test.py' -v
+      - name: Dynamic scheduling imbalance regression (synthetic workload)
+        if: matrix.python == '3.12'
+        run: python benchmarks/scheduling/run.py --workers 4 --trajectories 16 --rounds 3 --output scheduler-benchmark.json
+      - name: Retain raw scheduling measurements
+        if: matrix.python == '3.12'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scheduler-benchmark-${{ github.run_id }}
+          path: scheduler-benchmark.json
+          if-no-files-found: error
       - name: Benchmark identical HHOO kernels through CPU transports
         if: matrix.python == '3.12'
         run: python benchmarks/pes/run.py --kernel hhoo --workers 2 --beads 32 128 512 --calls 100 --rounds 5 --nve-steps 64 --output pes-benchmark.json

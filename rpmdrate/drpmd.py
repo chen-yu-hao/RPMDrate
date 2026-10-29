@@ -12,7 +12,7 @@ import sys
 
 from . import drpmd_core as _core
 from .drpmd_core import *  # Preserve the existing public Python API.
-from .drpmd_parallel import normalize_input, run_ensemble
+from .drpmd_scheduler import normalize_input, run_ensemble
 
 
 def __getattr__(name):
@@ -22,11 +22,14 @@ def __getattr__(name):
 
 def run(config, *, base=None, mode="serial", workers=1, output="drpmd-results",
         thermal_state=None, trajectory_workers=None, gpu_devices=None,
-        trajectories_per_gpu=None, pes_backend=None, dynamics_backend=None):
+        trajectories_per_gpu=None, pes_backend=None, dynamics_backend=None,
+        scheduler=None, task_prefetch=None):
     """Run N collisions, optionally distributed over independent parent chains.
 
     ``workers`` remains the PES/OpenMP worker count PER trajectory in bead mode.
-    ``trajectory_workers`` is the number of independent parent-chain processes.
+    ``trajectory_workers`` is the persistent worker count (and thermal-chain count).
+    Parallel ensembles default to a dynamic task pool; scheduler="static" retains
+    the legacy fixed partition. task_prefetch bounds ready/in-flight samples.
     GPU devices are logical CUDA indices after CUDA_VISIBLE_DEVICES filtering.
     ``pes_backend`` optionally overrides potential.cpu_backend: process,
     shared_memory or native. Native requires potential.native_library.
@@ -47,7 +50,8 @@ def run(config, *, base=None, mode="serial", workers=1, output="drpmd-results",
         if mode == "gpu" and backend != "process":
             raise ValueError("cpu_backend is a CPU-only option; GPU mode uses its CUDA PES")
     explicit = {"trajectory_workers": trajectory_workers, "gpu_devices": gpu_devices,
-                "trajectories_per_gpu": trajectories_per_gpu}
+                "trajectories_per_gpu": trajectories_per_gpu,
+                "scheduler": scheduler, "task_prefetch": task_prefetch}
     options.update({key: value for key, value in explicit.items() if value is not None})
     if not options:
         return _core.run(config, base=base, mode=mode, workers=workers,
@@ -67,7 +71,11 @@ def main(argv=None):
     parser.add_argument("--dynamics-backend", choices=("auto", "python", "native"),
                         help="Native C integration blocks require the native CPU PES; auto selects when available")
     parser.add_argument("--trajectory-workers", type=int,
-                        help="Concurrent independent parent chains, sharing the TOTAL trajectory count")
+                        help="Persistent task workers and independent physical thermal chains")
+    parser.add_argument("--scheduler", choices=("dynamic", "static"),
+                        help="Dynamic task pool (parallel default) or legacy fixed chain partition")
+    parser.add_argument("--task-prefetch", type=int,
+                        help="Maximum queued collision states plus active sampling tasks (default 2 x workers)")
     parser.add_argument("--gpu-devices", type=int, nargs="+", metavar="ID",
                         help="Logical CUDA device IDs, e.g. 0 1; gpu mode only")
     parser.add_argument("--trajectories-per-gpu", type=int,
@@ -88,7 +96,7 @@ def main(argv=None):
                       output=args.output, thermal_state=args.thermal_state,
                       trajectory_workers=args.trajectory_workers, gpu_devices=args.gpu_devices,
                       trajectories_per_gpu=args.trajectories_per_gpu, pes_backend=args.pes_backend,
-                      dynamics_backend=args.dynamics_backend)
+                      dynamics_backend=args.dynamics_backend, scheduler=args.scheduler, task_prefetch=args.task_prefetch)
     except KeyboardInterrupt:
         print("dRPMD interrupted; workers stopped and partial ensemble results retained", file=sys.stderr)
         return 130
