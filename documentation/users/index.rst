@@ -14,3 +14,4 @@ RPMDrate User's Guide
     output
     drpmd
     drpmd_parallel
+    drpmd_pes

@@ -12,6 +12,9 @@ on:
       - "tests/drpmd*.py"
       - "examples/H-H-O-O/pes/txt_1014"
       - "examples/H-H-O-O/pes/hhoo_1014_analytic.f90"
+      - "examples/H-H-O-O/pes/hhoo_drpmd_omp.f90"
+      - "examples/native_pes/**"
+      - "benchmarks/pes/**"
       - "examples/drpmd/**"
       - "requirements-drpmd*.txt"
       - "Makefile"
@@ -27,6 +30,9 @@ on:
       - "tests/drpmd*.py"
       - "examples/H-H-O-O/pes/txt_1014"
       - "examples/H-H-O-O/pes/hhoo_1014_analytic.f90"
+      - "examples/H-H-O-O/pes/hhoo_drpmd_omp.f90"
+      - "examples/native_pes/**"
+      - "benchmarks/pes/**"
       - "examples/drpmd/**"
       - "requirements-drpmd*.txt"
       - "Makefile"
@@ -44,6 +50,7 @@ env:
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
   OMP_NUM_THREADS: "2"
+  OMP_DYNAMIC: "FALSE"
 
 jobs:
   cpu:
@@ -68,8 +75,17 @@ jobs:
       - name: Build the reentrant OpenMP Cayley kernel
         run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
       - name: Run direct-RPMD regressions
-        # This independent path does not build the legacy numpy.distutils/f2py code.
         run: python -m unittest discover -s tests -t . -p 'drpmd*test.py' -v
+      - name: Benchmark identical HHOO kernels through CPU transports
+        if: matrix.python == '3.12'
+        run: python benchmarks/pes/run.py --kernel hhoo --workers 2 --beads 32 128 512 --calls 100 --rounds 5 --nve-steps 64 --output pes-benchmark.json
+      - name: Retain raw PES benchmark evidence
+        if: matrix.python == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pes-benchmark-${{ github.run_id }}
+          path: pes-benchmark.json
+          if-no-files-found: error
 
   torch-reference:
     name: Optional PyTorch backend / CPU reference

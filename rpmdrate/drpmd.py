@@ -1,7 +1,7 @@
 """Public direct-RPMD API and CLI, with orthogonal trajectory parallelism.
 
-The previously validated single-chain implementation is preserved verbatim in
-``drpmd_core``. Its physical sampling, propagator and PES interfaces are unchanged.
+Physical sampling and propagation live in ``drpmd_core``. CPU PES transport is
+independent of the outer trajectory scheduler and does not change Cayley rings.
 """
 from __future__ import annotations
 
@@ -22,16 +22,26 @@ def __getattr__(name):
 
 def run(config, *, base=None, mode="serial", workers=1, output="drpmd-results",
         thermal_state=None, trajectory_workers=None, gpu_devices=None,
-        trajectories_per_gpu=None):
+        trajectories_per_gpu=None, pes_backend=None):
     """Run N collisions, optionally distributed over independent parent chains.
 
     ``workers`` remains the PES/OpenMP worker count PER trajectory in bead mode.
     ``trajectory_workers`` is the number of independent parent-chain processes.
     GPU devices are logical CUDA indices after CUDA_VISIBLE_DEVICES filtering.
+    ``pes_backend`` optionally overrides potential.cpu_backend: process,
+    shared_memory or native. Native requires potential.native_library.
     Multiprocessing callers must use an ``if __name__ == '__main__'`` guard.
     With no parallel options, the existing single-chain output/API is preserved.
     """
     config, options = normalize_input(config)
+    if pes_backend is not None:
+        if not isinstance(config.get("potential"), dict):
+            raise ValueError("Input must contain a potential object")
+        config["potential"] = {**config["potential"], "cpu_backend": pes_backend}
+    if isinstance(config.get("potential"), dict):
+        backend = _core._cpu_pes_backend(config["potential"])
+        if mode == "gpu" and backend != "process":
+            raise ValueError("cpu_backend is a CPU-only option; GPU mode uses its CUDA PES")
     explicit = {"trajectory_workers": trajectory_workers, "gpu_devices": gpu_devices,
                 "trajectories_per_gpu": trajectories_per_gpu}
     options.update({key: value for key, value in explicit.items() if value is not None})
@@ -48,6 +58,8 @@ def main(argv=None):
     parser.add_argument("--mode", choices=("serial", "bead", "gpu"), default="serial")
     parser.add_argument("--workers", type=int, default=1,
                         help="PES processes/OpenMP threads PER trajectory in bead mode")
+    parser.add_argument("--pes-backend", choices=("process", "shared_memory", "native"),
+                        help="CPU PES transport; native also requires potential.native_library")
     parser.add_argument("--trajectory-workers", type=int,
                         help="Concurrent independent parent chains, sharing the TOTAL trajectory count")
     parser.add_argument("--gpu-devices", type=int, nargs="+", metavar="ID",
@@ -69,7 +81,7 @@ def main(argv=None):
         summary = run(config, base=args.input.resolve().parent, mode=args.mode, workers=args.workers,
                       output=args.output, thermal_state=args.thermal_state,
                       trajectory_workers=args.trajectory_workers, gpu_devices=args.gpu_devices,
-                      trajectories_per_gpu=args.trajectories_per_gpu)
+                      trajectories_per_gpu=args.trajectories_per_gpu, pes_backend=args.pes_backend)
     except KeyboardInterrupt:
         print("dRPMD interrupted; workers stopped and partial ensemble results retained", file=sys.stderr)
         return 130
