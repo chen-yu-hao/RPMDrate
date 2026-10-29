@@ -38,6 +38,8 @@ jobs:
           python-version: "3.12"
       - name: Install HHOO numerical dependencies
         run: python -m pip install -r requirements-drpmd.txt
+      - name: Validate experiment scripts
+        run: python -m py_compile benchmarks/hhoo_collision_batch.py benchmarks/hhoo_impact_report.py
       - name: Build C/OpenMP Cayley used as serial per-trajectory kernel
         run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
       - name: Verify CPU allocation
