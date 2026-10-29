@@ -1,0 +1,8 @@
+HHOO experimental pilot launch approved after thermal diagnostics.
+Thermal pilot run: 40907922645 (4 independent parent chains, each 20 ps, 32 beads, 300 K).
+Monitored split-Rhat: potential 1.001, spring 1.000, HO2 H1-O2 1.000, O2-O3 1.007.
+Largest monitored O2-O3 autocorrelation factor: ~11 ten-fs samples (~110 fs); choose 1000 fs independent sampling separation.
+Collision design: bmax=6 and bmax=10 bohr; four shards of 64 trajectories per bmax: total N=512.
+Each shard: four independent thermal parents, 16 collisions per parent, 20 ps initial thermalization, 1 ps sampling step, up to 20 ps unthermostatted collision per child.
+Unresolved outcomes remain unknown, rate estimates left null if unknown; this is pilot statistics, not production convergence.
+Workflow YAML title repaired; retry launch on 2026-10-29.
