@@ -22,7 +22,7 @@ def __getattr__(name):
 
 def run(config, *, base=None, mode="serial", workers=1, output="drpmd-results",
         thermal_state=None, trajectory_workers=None, gpu_devices=None,
-        trajectories_per_gpu=None, pes_backend=None):
+        trajectories_per_gpu=None, pes_backend=None, dynamics_backend=None):
     """Run N collisions, optionally distributed over independent parent chains.
 
     ``workers`` remains the PES/OpenMP worker count PER trajectory in bead mode.
@@ -34,6 +34,10 @@ def run(config, *, base=None, mode="serial", workers=1, output="drpmd-results",
     With no parallel options, the existing single-chain output/API is preserved.
     """
     config, options = normalize_input(config)
+    if dynamics_backend is not None:
+        config["dynamics_backend"] = dynamics_backend
+    if config.get("dynamics_backend", "auto") not in ("auto", "python", "native"):
+        raise ValueError("dynamics_backend must be auto, python or native")
     if pes_backend is not None:
         if not isinstance(config.get("potential"), dict):
             raise ValueError("Input must contain a potential object")
@@ -60,6 +64,8 @@ def main(argv=None):
                         help="PES processes/OpenMP threads PER trajectory in bead mode")
     parser.add_argument("--pes-backend", choices=("process", "shared_memory", "native"),
                         help="CPU PES transport; native also requires potential.native_library")
+    parser.add_argument("--dynamics-backend", choices=("auto", "python", "native"),
+                        help="Native C integration blocks require the native CPU PES; auto selects when available")
     parser.add_argument("--trajectory-workers", type=int,
                         help="Concurrent independent parent chains, sharing the TOTAL trajectory count")
     parser.add_argument("--gpu-devices", type=int, nargs="+", metavar="ID",
@@ -81,7 +87,8 @@ def main(argv=None):
         summary = run(config, base=args.input.resolve().parent, mode=args.mode, workers=args.workers,
                       output=args.output, thermal_state=args.thermal_state,
                       trajectory_workers=args.trajectory_workers, gpu_devices=args.gpu_devices,
-                      trajectories_per_gpu=args.trajectories_per_gpu, pes_backend=args.pes_backend)
+                      trajectories_per_gpu=args.trajectories_per_gpu, pes_backend=args.pes_backend,
+                      dynamics_backend=args.dynamics_backend)
     except KeyboardInterrupt:
         print("dRPMD interrupted; workers stopped and partial ensemble results retained", file=sys.stderr)
         return 130

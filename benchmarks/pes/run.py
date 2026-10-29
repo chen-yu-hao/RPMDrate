@@ -140,7 +140,7 @@ def main(argv=None):
                         from rpmdrate.drpmd_core import Dynamics, AMU, KB, TIME_FS, propagate, sample_momenta
                         masses = np.array([1., 1., 16., 16.])*AMU
                         momenta = sample_momenta(masses, beads, 1/(KB*300), np.random.default_rng(811))
-                        dynamics = Dynamics(masses, 300, beads, 0.02/TIME_FS, backend, threads=1)
+                        dynamics = Dynamics(masses, 300, beads, 0.02/TIME_FS, backend, threads=1, backend="python")
                         times = []
                         for _ in range(3):
                             started = time.perf_counter()

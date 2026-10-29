@@ -45,7 +45,7 @@ def build_native(compiler=None):
     with tempfile.TemporaryDirectory(prefix="drpmd-build-", dir=str(source.parent)) as directory:
         target = Path(directory) / _NATIVE_PATH.name
         args = command + ["-std=c99", "-O3", "-fPIC", "-shared", "-fopenmp",
-                          str(source), "-o", str(target)]
+                          str(source), str(source.with_name("_drpmd_engine.c")), "-lm", "-o", str(target)]
         result = subprocess.run(args, capture_output=True, text=True, check=False)
         if result.returncode:
             raise RuntimeError("C/OpenMP build failed:\n" + result.stdout + result.stderr)

@@ -15,3 +15,4 @@ RPMDrate User's Guide
     drpmd
     drpmd_parallel
     drpmd_pes
+    drpmd_native

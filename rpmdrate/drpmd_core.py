@@ -164,7 +164,7 @@ class ThermalState:
 class Dynamics:
     """One trajectory, with an external batched PES and reentrant Cayley kernel."""
 
-    def __init__(self, masses, temperature, nbeads, dt, potential, threads=1, native=None):
+    def __init__(self, masses, temperature, nbeads, dt, potential, threads=1, native=None, backend="auto", block_steps=256):
         self.masses = _masses(masses)
         self.temperature = _positive(temperature, "temperature")
         self.beta = 1.0 / (KB * self.temperature)
@@ -173,6 +173,12 @@ class Dynamics:
         self.potential = potential
         self.integrator = CayleyIntegrator(self.masses, self.beta, self.nbeads,
                                           self.dt, threads=threads, native=native)
+        from .drpmd_engine import select_engine
+        self.block_steps = _integer(block_steps, "native_block_steps")
+        if self.block_steps > np.iinfo(np.int32).max:
+            raise ValueError("native_block_steps exceeds int32")
+        self.engine = select_engine(self, backend)
+        self.backend = "native" if self.engine is not None else "python"
 
     def step(self, p, q, gradient, constraints=None):
         self.integrator.kick(p, gradient, 0.5 * self.dt)
@@ -198,6 +204,8 @@ class Dynamics:
         steps = _integer(steps, "thermalization steps", minimum=0)
         interval = _integer(interval, "Andersen interval")
         start_step = _integer(start_step, "start_step", minimum=0)
+        if self.engine is not None:
+            return self.engine.thermalize(q, p, fragments, steps, interval, rng, start_step)
         constraints = CentroidCOMConstraints(q, self.masses, fragments)
         constraints.momenta(p)
         values, gradient = self.potential.evaluate(q)
@@ -328,7 +336,7 @@ class ConnectivityClassifier:
             if signature in self.channels:
                 raise ValueError("Duplicate product stoichiometry")
             self.channels[signature] = label
-        self.reactant_signature = tuple(sorted(formula([atoms[i] for i in f]) for f in self.fragments))
+        self.reactant_signature = tuple(sorted(formula([self.atoms[i] for i in f]) for f in self.fragments))
         if self.reactant_signature in self.channels:
             raise ValueError("A product signature duplicates reactants; use a custom identity-aware classifier")
 
@@ -403,6 +411,9 @@ def propagate(dynamics, q, p, steps, classifier=None, check_interval=10,
     q, p = np.array(q, order="F", dtype=np.float64, copy=True), np.array(p, order="F", dtype=np.float64, copy=True)
     if q.shape != (3, len(dynamics.masses), dynamics.nbeads) or p.shape != q.shape or not np.isfinite(p).all():
         raise ValueError("Trajectory arrays must match dynamics shape and be finite")
+    if dynamics.engine is not None:
+        from .drpmd_engine import propagate_native
+        return propagate_native(dynamics, q, p, steps, classifier, check_interval, persistence, save_every, observer)
     values, gradient = dynamics.potential.evaluate(q)
     initial = ring_energy(q, p, dynamics.masses, dynamics.beta, values) / dynamics.nbeads
     if not math.isfinite(initial):
@@ -607,7 +618,8 @@ def _run(config, *, base, mode="serial", workers=1, output="drpmd-results", ther
                "initial_geometry_bohr", "thermalization_steps", "sampling_steps", "andersen_interval",
                "trajectories", "evolution_steps", "initial_separation_bohr", "bmax_bohr", "seed",
                "bond_cutoffs_bohr", "channels", "exit_distance_bohr", "check_interval", "persistence",
-               "save_every", "electronic_weight", "potential", "description"}
+               "save_every", "electronic_weight", "potential", "description",
+               "dynamics_backend", "native_block_steps"}
     unknown_keys = set(config) - allowed
     if unknown_keys:
         raise ValueError(f"Unknown input keys (possible typo): {sorted(unknown_keys)}")
@@ -673,9 +685,13 @@ def _run(config, *, base, mode="serial", workers=1, output="drpmd-results", ther
             raise RuntimeError("Install threadpoolctl to control native BLAS threads: pip install threadpoolctl") from exc
         stack.enter_context(threadpool_limits(limits=1, user_api="blas"))
         potential = stack.enter_context(_make_potential(config, base, mode, workers))
-        dynamics = Dynamics(masses, temperature, nbeads, dt, potential, threads=workers if mode == "bead" else 1)
+        dynamics = Dynamics(masses, temperature, nbeads, dt, potential, threads=workers if mode == "bead" else 1,
+                            backend=config.get("dynamics_backend", "auto"), block_steps=config.get("native_block_steps", 256))
+        if dynamics.engine is not None:
+            stack.callback(dynamics.engine.close)
         output.mkdir(parents=True)
         manifest = {"input": config, "mode": mode, "workers": workers, "native_cayley": dynamics.integrator.native,
+                    "dynamics_backend": dynamics.backend, "native_block_steps": dynamics.block_steps,
                     "potential_identity": potential_identity, "provenance": provenance,
                     "source_thermal_state": str(thermal_state) if thermal_state else None}
         manifest["pes_backend"] = ("gpu" if mode == "gpu" else
@@ -750,7 +766,8 @@ def _run(config, *, base, mode="serial", workers=1, output="drpmd-results", ther
     summary.update({"requested_trajectories": trajectories, "mode": mode, "workers": workers,
                     "temperature_K": temperature, "nbeads": nbeads, "dt_fs": config["dt_fs"],
                     "potential": config["potential"], "thermal_steps_at_last_sample": clock,
-                    "pes_backend": manifest["pes_backend"],
+                    "pes_backend": manifest["pes_backend"], "dynamics_backend": dynamics.backend,
+                    "native_block_calls": dynamics.engine.calls if dynamics.engine else 0,
                     "pes_last_threads_used": getattr(potential, "last_threads_used", None),
                     "timing_seconds": {"wall": time.perf_counter()-started, "thermal_propagation": thermal_seconds,
                                        "collision_propagation_and_trace": production_seconds},

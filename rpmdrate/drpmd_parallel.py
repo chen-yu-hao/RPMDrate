@@ -154,9 +154,18 @@ def _preflight(config, base, plan, states):
                "initial_geometry_bohr", "thermalization_steps", "sampling_steps", "andersen_interval",
                "trajectories", "evolution_steps", "initial_separation_bohr", "bmax_bohr", "seed",
                "bond_cutoffs_bohr", "channels", "exit_distance_bohr", "check_interval", "persistence",
-               "save_every", "electronic_weight", "potential", "description"}
+               "save_every", "electronic_weight", "potential", "description",
+               "dynamics_backend", "native_block_steps"}
     if set(config) - allowed:
         raise ValueError(f"Unknown input keys: {sorted(set(config) - allowed)}")
+    if config.get("dynamics_backend", "auto") not in ("auto", "python", "native"):
+        raise ValueError("dynamics_backend must be auto, python or native")
+    if _int(config.get("native_block_steps", 256), "native_block_steps") > np.iinfo(np.int32).max:
+        raise ValueError("native_block_steps exceeds int32")
+    if config.get("dynamics_backend") == "native":
+        from .drpmd_engine import engine_library
+        if plan["mode"] == "gpu" or core._cpu_pes_backend(config["potential"]) != "native" or engine_library() is None:
+            raise ValueError("Native dynamics requires a native CPU PES and a rebuilt C kernel")
     masses = core._masses(config["masses_amu"]) * core.AMU
     fragments = core.validate_fragments(config["fragments"], len(masses))
     temperature = core._positive(config["temperature_K"], "temperature_K")

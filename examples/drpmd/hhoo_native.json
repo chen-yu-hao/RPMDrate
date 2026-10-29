@@ -1,0 +1,90 @@
+{
+  "description": "Native C/Fortran flow test only; not a converged thermal ensemble or reaction rate.",
+  "atoms": [
+    "H",
+    "H",
+    "O",
+    "O"
+  ],
+  "masses_amu": [
+    1.00782503223,
+    1.00782503223,
+    15.99491461957,
+    15.99491461957
+  ],
+  "fragments": [
+    [
+      0
+    ],
+    [
+      1,
+      2,
+      3
+    ]
+  ],
+  "initial_geometry_bohr": [
+    [
+      0.0,
+      0.0,
+      20.0
+    ],
+    [
+      -0.65,
+      1.72,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      2.52,
+      0.0,
+      0.0
+    ]
+  ],
+  "temperature_K": 300.0,
+  "nbeads": 32,
+  "dt_fs": 0.05,
+  "thermalization_steps": 200,
+  "sampling_steps": 20,
+  "andersen_interval": 10,
+  "trajectories": 4,
+  "evolution_steps": 1000,
+  "initial_separation_bohr": 20.0,
+  "bmax_bohr": 6.0,
+  "seed": 20261029,
+  "bond_cutoffs_bohr": {
+    "H-H": 1.9,
+    "H-O": 2.6,
+    "O-O": 3.2
+  },
+  "channels": {
+    "2OH": [
+      "HO",
+      "HO"
+    ],
+    "H2+O2": [
+      "H2",
+      "O2"
+    ],
+    "H2O+O": [
+      "H2O",
+      "O"
+    ]
+  },
+  "exit_distance_bohr": 20.0,
+  "check_interval": 10,
+  "persistence": 3,
+  "save_every": 100,
+  "electronic_weight": 1.0,
+  "potential": {
+    "type": "hhoo",
+    "weights": "../H-H-O-O/pes/txt_1014",
+    "cpu_backend": "native",
+    "native_library": "../H-H-O-O/pes/libhhoo_drpmd.so"
+  },
+  "dynamics_backend": "native",
+  "native_block_steps": 256
+}
