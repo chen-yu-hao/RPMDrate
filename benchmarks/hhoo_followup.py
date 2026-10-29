@@ -368,8 +368,8 @@ def selftest():
     class Harmonic:
         def evaluate(self,q):return 0.025*(q*q).sum(axis=(0,1)),np.asfortranarray(0.05*q)
     rng=np.random.default_rng(721)
-    q=np.asfortranarray(rng.normal(0,.1,(3,2,4)));p=np.asfortranarray(rng.normal(0,.01,q.shape))
-    dyn=core.Dynamics([1.,2.],300.,4,.01,Harmonic(),native=True)
+    q=np.asfortranarray(rng.normal(0,.1,(3,4,4)));p=np.asfortranarray(rng.normal(0,.01,q.shape))
+    dyn=core.Dynamics([1.,2.,3.,4.],300.,4,.01,Harmonic(),native=True)
     e0=core.ring_energy(q,p,dyn.masses,dyn.beta,dyn.potential.evaluate(q)[0])/4
     with tempfile.TemporaryDirectory() as d:
         d=Path(d)
