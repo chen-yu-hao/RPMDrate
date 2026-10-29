@@ -1,0 +1,63 @@
+name: Native dRPMD efficiency
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/thermal-drpmd]
+    paths:
+      - 'rpmdrate/drpmd*.py'
+      - 'rpmdrate/_drpmd*.c'
+      - 'rpmdrate/_drpmd*.h'
+      - 'tests/drpmd*'
+      - 'benchmarks/native/**'
+      - '.github/workflows/drpmd-native.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-drpmd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OPENBLAS_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  OMP_NUM_THREADS: '1'
+  OMP_DYNAMIC: 'FALSE'
+  OMP_WAIT_POLICY: 'PASSIVE'
+
+jobs:
+  efficiency:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Retain exact source for reproducibility
+        run: git archive --format=tar.gz HEAD -o native-source.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-source-${{ github.run_id }}
+          path: native-source.tar.gz
+          retention-days: 14
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install compilers and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gcc gfortran
+          python -m pip install -r requirements-drpmd.txt
+          python -m rpmdrate.drpmd_integrator --build --compiler gcc
+          python -m rpmdrate.drpmd_native_pes --build-hhoo
+      - name: Numerical regressions
+        run: python -m unittest discover -s tests -t . -p 'drpmd*test.py' -v
+      - name: Native propagation and parallel efficiency
+        if: hashFiles('benchmarks/native/run.py') != ''
+        run: python benchmarks/native/run.py --threads 1 2 4 --beads 32 128 --steps 1000 --rounds 3 --trajectories 8 --output native-efficiency.json
+      - name: Retain raw efficiency measurements
+        if: hashFiles('native-efficiency.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-efficiency-${{ github.run_id }}
+          path: native-efficiency.json
+          if-no-files-found: error
