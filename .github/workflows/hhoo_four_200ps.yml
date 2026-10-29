@@ -1,0 +1,112 @@
+name: HHOO four trajectories x 200 ps (4 CPUs)
+on:
+  push:
+    branches: ["run/hhoo-32beads-four-200ps"]
+    paths:
+      - ".github/workflows/hhoo_four_200ps.yml"
+      - "examples/drpmd/hhoo_32b_four_200ps.json"
+      - "examples/drpmd/analyze_four_200ps.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hhoo-32beads-four-200ps
+  cancel-in-progress: false
+jobs:
+  production:
+    name: Four concurrent independent serial trajectories (32 beads, 200 ps)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      OMP_DYNAMIC: "FALSE"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install numerical and plotting dependencies
+        run: python -m pip install -r requirements-drpmd.txt matplotlib
+      - name: Build reentrant native Cayley
+        run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
+      - name: Validate configuration and CPU slots
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          x = json.loads(Path("examples/drpmd/hhoo_32b_four_200ps.json").read_text())
+          assert x["nbeads"] == 32
+          assert x["trajectories"] == x["parallel"]["trajectory_workers"] == 4
+          assert x["evolution_steps"] == 2_000_000 and x["dt_fs"] == 0.1
+          assert x["save_every"] == 10
+          cpus = len(os.sched_getaffinity(0))
+          print("Available CPU slots:", cpus)
+          assert cpus >= 4
+          PY
+          python -m py_compile examples/drpmd/analyze_four_200ps.py
+      - name: Propagate four independent trajectories
+        run: |
+          set -euo pipefail
+          python -m rpmdrate.drpmd \
+            examples/drpmd/hhoo_32b_four_200ps.json \
+            --mode serial --trajectory-workers 4 --trajectories 4 \
+            --output hhoo-four-32b-200ps &
+          job_pid=$!
+          while kill -0 "$job_pid" 2>/dev/null; do
+            sleep 120
+            echo "===== Progress $(date -u +%Y-%m-%dT%H:%M:%SZ) ====="
+            for i in 0001 0002 0003 0004; do
+              trace="hhoo-four-32b-200ps/chains/chain_$i/trajectory_000001.csv"
+              if [ -s "$trace" ]; then
+                echo "Chain $i: last saved step/time_fs: $(tail -n 1 "$trace" | cut -d, -f1-2)"
+              else
+                echo "Chain $i: waiting for first saved frame"
+              fi
+            done
+          done
+          wait "$job_pid"
+          cat hhoo-four-32b-200ps/summary.json
+          cat hhoo-four-32b-200ps/trajectories.csv
+          python - <<'PY'
+          import csv,json
+          from pathlib import Path
+          p=Path("hhoo-four-32b-200ps")
+          s=json.loads((p/"summary.json").read_text())
+          with (p/"trajectories.csv").open(newline="") as f:
+              rows=list(csv.DictReader(f))
+          assert s["requested_trajectories"] == len(rows) == 4, s
+          assert s["trajectory_workers"] == 4
+          assert s["mode"] == "serial" and s["workers"] == 1
+          assert s["counts"]["failed"] == 0, s
+          assert all(0 < int(x["steps"]) <= 2_000_000 for x in rows)
+          print("FOUR_TRAJECTORIES_VALIDATED",json.dumps({
+              "statuses":[x["status"] for x in rows],
+              "steps":[int(x["steps"]) for x in rows],
+              "wall_seconds":s["timing_seconds"]["wall"]
+          }))
+          PY
+      - name: Analyze bond length and reactant COM distances
+        run: |
+          python examples/drpmd/analyze_four_200ps.py \
+            --results hhoo-four-32b-200ps \
+            --expected-trajectories 4 --duration-ps 200
+      - name: Actions summary
+        if: always()
+        run: |
+          echo "Four independent H + HO2 trajectories: 32 beads, up to 200 ps each, 4 CPUs total." >> "$GITHUB_STEP_SUMMARY"
+          echo "Centroid bond CSV resolution: 1 fs. See trajectories.csv for chemistry statuses." >> "$GITHUB_STEP_SUMMARY"
+          if [ -f hhoo-four-32b-200ps/trajectories.csv ]; then
+            cat hhoo-four-32b-200ps/trajectories.csv >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload all results even if a step fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hhoo-four-32beads-200ps
+          path: hhoo-four-32b-200ps/
+          if-no-files-found: warn
+          retention-days: 30
