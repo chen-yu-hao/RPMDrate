@@ -1,4 +1,4 @@
-name: HHOO 512 trajectories: 32 beads, 20ps thermal, impact 6 vs 10
+name: "HHOO 512 trajectories: 32 beads, 20ps thermal, impact 6 vs 10"
 on:
   push:
     branches: ["experiment/hhoo-thermal-impact-512"]
