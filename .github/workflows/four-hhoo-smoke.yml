@@ -22,7 +22,16 @@ jobs:
           OPENBLAS_NUM_THREADS: "1"
           MKL_NUM_THREADS: "1"
         run: |
-          python -m rpmdrate.drpmd examples/drpmd/hhoo_smoke.json --mode serial --trajectories 4 --output four-hhoo-results
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          cfg = json.loads(Path("examples/drpmd/hhoo_smoke.json").read_text())
+          cfg["evolution_steps"] = 1000  # 100 fs, dt=0.1 fs
+          cfg["trajectories"] = 4
+          cfg["potential"]["weights"] = str(Path("examples/H-H-O-O/pes/txt_1014").resolve())
+          Path("four-hhoo-100fs.json").write_text(json.dumps(cfg))
+          PY
+          python -m rpmdrate.drpmd four-hhoo-100fs.json --mode serial --output four-hhoo-results
           echo "=== INDIVIDUAL TRAJECTORIES ==="
           cat four-hhoo-results/trajectories.csv
           echo "=== SUMMARY ==="
