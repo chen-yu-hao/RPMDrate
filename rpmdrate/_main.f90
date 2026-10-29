@@ -54,10 +54,16 @@ module system
     double precision :: CAYLEY_SINV12 = 0.0d0
     double precision :: CAYLEY_SINV21 = 0.0d0
     double precision :: CAYLEY_SINV22 = 1.0d0
-    double precision, allocatable :: CAYLEY_DIAG(:)
+    double precision, allocatable :: CAYLEY_INV_DIAG(:)
     double precision, allocatable :: CAYLEY_L(:)
     double precision, allocatable :: CAYLEY_Z1(:)
     double precision, allocatable :: CAYLEY_Z2(:)
+    double precision, allocatable :: CAYLEY_WORK(:,:)
+    double precision :: CAYLEY_ALPHA, CAYLEY_WN2, CAYLEY_PAIR_SCALE
+    logical :: CAYLEY_MASS_READY = .false.
+    integer :: CAYLEY_MASS_NATOMS = 0
+    double precision :: CAYLEY_MASS_SNAPSHOT(MAX_ATOMS) = 0.0d0
+    double precision :: CAYLEY_HALF_DT_MASS(3*MAX_ATOMS), CAYLEY_SPRING_MASS(3*MAX_ATOMS)
     ! The type of thermostat (1 = Andersen, 2 = GLE)
     integer :: thermostat
     
@@ -553,7 +559,7 @@ subroutine init_dft_CC(Nbeads,dftCC,idftCC)
         if (CAYLEY_READY .and. CAYLEY_NBEADS .eq. Nbeads .and. &
             CAYLEY_DT .eq. dt .and. CAYLEY_BETA .eq. beta) return
 
-        if (allocated(CAYLEY_DIAG)) deallocate(CAYLEY_DIAG)
+        if (allocated(CAYLEY_INV_DIAG)) deallocate(CAYLEY_INV_DIAG)
         if (allocated(CAYLEY_L)) deallocate(CAYLEY_L)
         if (allocated(CAYLEY_Z1)) deallocate(CAYLEY_Z1)
         if (allocated(CAYLEY_Z2)) deallocate(CAYLEY_Z2)
@@ -562,24 +568,28 @@ subroutine init_dft_CC(Nbeads,dftCC,idftCC)
         CAYLEY_NBEADS = Nbeads
         CAYLEY_DT = dt
         CAYLEY_BETA = beta
+        CAYLEY_WN2 = (dble(Nbeads) / beta)**2
+        CAYLEY_ALPHA = 0.25d0 * dt * dt * CAYLEY_WN2
+        CAYLEY_MASS_READY = .false.
 
         if (Nbeads .lt. 3) then
+            CAYLEY_PAIR_SCALE = 1.0d0 / (1.0d0 + 4.0d0 * CAYLEY_ALPHA)
             CAYLEY_READY = .true.
             return
         end if
 
-        alpha = 0.25d0 * (dt * dble(Nbeads) / beta)**2
+        alpha = CAYLEY_ALPHA
         off = -alpha
         CAYLEY_OFF = off
-        allocate(CAYLEY_DIAG(Nbeads), CAYLEY_L(Nbeads))
+        allocate(CAYLEY_INV_DIAG(Nbeads), CAYLEY_L(Nbeads))
         allocate(CAYLEY_Z1(Nbeads), CAYLEY_Z2(Nbeads))
 
         ! LDL-like Thomas factors for the open tridiagonal matrix T.
-        CAYLEY_DIAG(1) = 1.0d0 + 2.0d0 * alpha
+        CAYLEY_INV_DIAG(1) = 1.0d0 / (1.0d0 + 2.0d0 * alpha)
         CAYLEY_L(1) = 0.0d0
         do k = 2, Nbeads
-            CAYLEY_L(k) = off / CAYLEY_DIAG(k-1)
-            CAYLEY_DIAG(k) = 1.0d0 + 2.0d0 * alpha - CAYLEY_L(k) * off
+            CAYLEY_L(k) = off * CAYLEY_INV_DIAG(k-1)
+            CAYLEY_INV_DIAG(k) = 1.0d0 / (1.0d0 + 2.0d0 * alpha - CAYLEY_L(k) * off)
         end do
 
         allocate(rhs(Nbeads))
@@ -618,28 +628,32 @@ subroutine init_dft_CC(Nbeads,dftCC,idftCC)
         do k = 2, Nbeads
             y(k) = rhs(k) - CAYLEY_L(k) * y(k-1)
         end do
-        x(Nbeads) = y(Nbeads) / CAYLEY_DIAG(Nbeads)
+        x(Nbeads) = y(Nbeads) * CAYLEY_INV_DIAG(Nbeads)
         do k = Nbeads-1, 1, -1
-            x(k) = (y(k) - CAYLEY_OFF * x(k+1)) / CAYLEY_DIAG(k)
+            x(k) = (y(k) - CAYLEY_OFF * x(k+1)) * CAYLEY_INV_DIAG(k)
         end do
     end subroutine cayley_solve_tridiagonal
 
-    ! Solve the cyclic system M x = rhs using the cached rank-two correction.
-    subroutine cayley_solve_cyclic(rhs, x, Nbeads)
+    ! Solve all Cartesian rings together: adjacent atom/components are contiguous
+    ! and independent, so the bead recurrence can vectorize across them.  The
+    ! last two columns hold the fixed rank-two correction without new allocation.
+    subroutine cayley_solve_cyclic(x, Nd, Nbeads)
         implicit none
-        integer, intent(in) :: Nbeads
-        double precision, intent(in) :: rhs(Nbeads)
-        double precision, intent(out) :: x(Nbeads)
-        double precision :: y(Nbeads), c1, c2, y1, y2
+        integer, intent(in) :: Nd, Nbeads
+        double precision, intent(inout) :: x(Nd,Nbeads+2)
         integer :: k
 
-        call cayley_solve_tridiagonal(rhs, y, Nbeads)
-        y1 = y(Nbeads)
-        y2 = y(1)
-        c1 = CAYLEY_SINV11 * y1 + CAYLEY_SINV12 * y2
-        c2 = CAYLEY_SINV21 * y1 + CAYLEY_SINV22 * y2
+        do k = 2, Nbeads
+            x(:,k) = x(:,k) - CAYLEY_L(k) * x(:,k-1)
+        end do
+        x(:,Nbeads) = x(:,Nbeads) * CAYLEY_INV_DIAG(Nbeads)
+        do k = Nbeads-1, 1, -1
+            x(:,k) = (x(:,k) - CAYLEY_OFF * x(:,k+1)) * CAYLEY_INV_DIAG(k)
+        end do
+        x(:,Nbeads+1) = CAYLEY_SINV11 * x(:,Nbeads) + CAYLEY_SINV12 * x(:,1)
+        x(:,Nbeads+2) = CAYLEY_SINV21 * x(:,Nbeads) + CAYLEY_SINV22 * x(:,1)
         do k = 1, Nbeads
-            x(k) = y(k) - CAYLEY_Z1(k) * c1 - CAYLEY_Z2(k) * c2
+            x(:,k) = x(:,k) - CAYLEY_Z1(k) * x(:,Nbeads+1) - CAYLEY_Z2(k) * x(:,Nbeads+2)
         end do
     end subroutine cayley_solve_cyclic
 
@@ -650,66 +664,75 @@ subroutine init_dft_CC(Nbeads,dftCC,idftCC)
         implicit none
         integer, intent(in) :: Natoms, Nbeads
         double precision, intent(inout) :: p(3,Natoms,Nbeads), q(3,Natoms,Nbeads)
-        double precision :: qold(Nbeads), vold(Nbeads), rhs(Nbeads), qnew(Nbeads)
-        double precision :: alpha, wn, lq, mass_j
-        integer :: i, j, k, km, kp
+        integer :: j
 
         if (Nbeads .le. 0) return
+        call cayley_prepare(Nbeads)
+        if (.not.CAYLEY_MASS_READY .or. CAYLEY_MASS_NATOMS .ne. Natoms .or. &
+            any(CAYLEY_MASS_SNAPSHOT(1:Natoms) .ne. mass(1:Natoms))) then
+            do j = 1, Natoms
+                CAYLEY_HALF_DT_MASS(3*j-2:3*j) = 0.5d0 * dt / mass(j)
+                CAYLEY_SPRING_MASS(3*j-2:3*j) = dt * mass(j) * CAYLEY_WN2
+            end do
+            CAYLEY_MASS_SNAPSHOT(1:Natoms) = mass(1:Natoms)
+            CAYLEY_MASS_NATOMS = Natoms
+            CAYLEY_MASS_READY = .true.
+        end if
+
+        ! Explicit-shape sequence association gives a contiguous Nd-by-P view
+        ! of the same arrays, while the public/f2py interface keeps rank three.
+        call free_ring_polymer_cayley_nd(p, q, 3*Natoms, Nbeads)
+    end subroutine free_ring_polymer_cayley_step
+
+    subroutine free_ring_polymer_cayley_nd(p, q, Nd, Nbeads)
+        implicit none
+        integer, intent(in) :: Nd, Nbeads
+        double precision, intent(inout) :: p(Nd,Nbeads), q(Nd,Nbeads)
+        double precision :: alpha, b1, b2, mid1, mid2, impulse
+        integer :: i, k, km, kp
+
         if (Nbeads .eq. 1) then
-            do i = 1, 3
-                do j = 1, Natoms
-                    q(i,j,1) = q(i,j,1) + dt * p(i,j,1) / mass(j)
-                end do
+            q(:,1) = q(:,1) + 2.0d0 * CAYLEY_HALF_DT_MASS(1:Nd) * p(:,1)
+            return
+        end if
+
+        if (Nbeads .eq. 2) then
+            alpha = CAYLEY_ALPHA
+            do i = 1, Nd
+                b1 = q(i,1) + CAYLEY_HALF_DT_MASS(i) * p(i,1)
+                b2 = q(i,2) + CAYLEY_HALF_DT_MASS(i) * p(i,2)
+                mid1 = ((1.0d0 + 2.0d0 * alpha) * b1 + 2.0d0 * alpha * b2) * CAYLEY_PAIR_SCALE
+                mid2 = (2.0d0 * alpha * b1 + (1.0d0 + 2.0d0 * alpha) * b2) * CAYLEY_PAIR_SCALE
+                impulse = 2.0d0 * CAYLEY_SPRING_MASS(i) * (mid1 - mid2)
+                p(i,1) = p(i,1) - impulse
+                p(i,2) = p(i,2) + impulse
+                q(i,1) = 2.0d0 * mid1 - q(i,1)
+                q(i,2) = 2.0d0 * mid2 - q(i,2)
             end do
             return
         end if
 
-        call cayley_prepare(Nbeads)
-        wn = dble(Nbeads) / beta
-        alpha = 0.25d0 * (dt * wn)**2
+        if (allocated(CAYLEY_WORK)) then
+            if (size(CAYLEY_WORK,1) .ne. Nd .or. size(CAYLEY_WORK,2) .ne. Nbeads+2) deallocate(CAYLEY_WORK)
+        end if
+        if (.not.allocated(CAYLEY_WORK)) allocate(CAYLEY_WORK(Nd,Nbeads+2))
 
-        do i = 1, 3
-            do j = 1, Natoms
-                mass_j = mass(j)
-                do k = 1, Nbeads
-                    qold(k) = q(i,j,k)
-                    vold(k) = p(i,j,k) / mass_j
-                end do
-
-                if (Nbeads .eq. 2) then
-                    rhs(1) = (1.0d0 - 2.0d0 * alpha) * qold(1) + &
-                        2.0d0 * alpha * qold(2) + dt * vold(1)
-                    rhs(2) = 2.0d0 * alpha * qold(1) + &
-                        (1.0d0 - 2.0d0 * alpha) * qold(2) + dt * vold(2)
-                    qnew(1) = ((1.0d0 + 2.0d0 * alpha) * rhs(1) + &
-                        2.0d0 * alpha * rhs(2)) / (1.0d0 + 4.0d0 * alpha)
-                    qnew(2) = (2.0d0 * alpha * rhs(1) + &
-                        (1.0d0 + 2.0d0 * alpha) * rhs(2)) / (1.0d0 + 4.0d0 * alpha)
-                else
-                    do k = 1, Nbeads
-                        km = k - 1
-                        if (km .lt. 1) km = Nbeads
-                        kp = k + 1
-                        if (kp .gt. Nbeads) kp = 1
-                        rhs(k) = (1.0d0 - 2.0d0 * alpha) * qold(k) + &
-                            alpha * (qold(km) + qold(kp)) + dt * vold(k)
-                    end do
-                    call cayley_solve_cyclic(rhs, qnew, Nbeads)
-                end if
-
-                do k = 1, Nbeads
-                    km = k - 1
-                    if (km .lt. 1) km = Nbeads
-                    kp = k + 1
-                    if (kp .gt. Nbeads) kp = 1
-                    lq = 2.0d0 * (qold(k) + qnew(k)) - &
-                        (qold(km) + qnew(km)) - (qold(kp) + qnew(kp))
-                    q(i,j,k) = qnew(k)
-                    p(i,j,k) = mass_j * (vold(k) - 0.5d0 * dt * wn * wn * lq)
-                end do
-            end do
+        ! The same Cayley map in midpoint form: M q_mid = q + dt*p/(2*m),
+        ! q_new = 2*q_mid - q, p_new = p - dt*m*omega_P**2*L*q_mid.
+        do k = 1, Nbeads
+            CAYLEY_WORK(:,k) = q(:,k) + CAYLEY_HALF_DT_MASS(1:Nd) * p(:,k)
         end do
-    end subroutine free_ring_polymer_cayley_step
+        call cayley_solve_cyclic(CAYLEY_WORK, Nd, Nbeads)
+        do k = 1, Nbeads
+            km = k - 1
+            if (km .lt. 1) km = Nbeads
+            kp = k + 1
+            if (kp .gt. Nbeads) kp = 1
+            p(:,k) = p(:,k) - CAYLEY_SPRING_MASS(1:Nd) * &
+                (2.0d0 * CAYLEY_WORK(:,k) - CAYLEY_WORK(:,km) - CAYLEY_WORK(:,kp))
+            q(:,k) = 2.0d0 * CAYLEY_WORK(:,k) - q(:,k)
+        end do
+    end subroutine free_ring_polymer_cayley_nd
     ! Public free-ring entry point.  All production free-ring steps use the
     ! cyclic-tridiagonal Cayley propagator; the previous normal-mode routine
     ! remains below under a reference name for numerical comparisons.

@@ -1,0 +1,439 @@
+{
+  "host": "cluster",
+  "platform": "Linux-5.14.0-611.49.1.el9_7.x86_64-x86_64-with-glibc2.34",
+  "cpu_model": "Intel(R) Xeon(R) Platinum 8176 CPU @ 2.10GHz",
+  "pinned_cpu": 108,
+  "cpu_load_before_pin": 0.0,
+  "prior_affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111
+  ],
+  "compiler": "GNU Fortran (GCC) 11.3.1 20221121 (Red Hat 11.3.1-4)",
+  "fftw_version": "fftw-3.3.8-sse2-avx",
+  "fftw_planner": "FFTW_MEASURE; 24 batched r2c/c2r transforms",
+  "compile_command": [
+    "gfortran",
+    "-O3",
+    "-funroll-loops",
+    "-fPIC",
+    "-shared",
+    "-ffree-line-length-none",
+    "-I/usr/include",
+    "-J/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/build",
+    "-I/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/build",
+    "-march=native",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/_surface.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/_math.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/blas_lapack.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/_main.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/hhoo_1014_analytic.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/dense_repository.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/cyclic_before.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/step_b_reference.f90",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source/backends.f90",
+    "-lfftw3",
+    "-o",
+    "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/build/kernels.so"
+  ],
+  "native_build": true,
+  "temperature_K": 300.0,
+  "atom_order": [
+    "H",
+    "H",
+    "O",
+    "O"
+  ],
+  "masses_au": [
+    1837.15,
+    1837.15,
+    29156.95,
+    29156.95
+  ],
+  "precision": "FP64",
+  "threads": 1,
+  "trials": 7,
+  "source_commit": "6a4e0aa14ec3425bf403197c2f4708d70fd272c9",
+  "source_snapshot": "/data2/lyl/RPMD/benchmarks/cayley_fftw/runs/20261029T080912.152745Z/source",
+  "all_validation_passed": true,
+  "notes": [
+    "The cyclic backend calls the frozen production routine from _main.f90.",
+    "All backends implement the same full Cayley map; the exact exponential propagator is not timed.",
+    "Dense repository style changes only modal cos/sin factors to Cayley coefficients.",
+    "Dense cached precomputes the same coefficients; both dense methods retain repository matmul transforms, not BLAS GEMM.",
+    "Initialization, matrix/factor preparation and FFTW planning are excluded.",
+    "Free-ring timing advances continuous native loops; packing and unpacking for FFTW are included.",
+    "PES timing resets to the same p/q, reuses the initial gradient, evaluates one new PES/gradient, and includes two kicks.",
+    "PES timing excludes thermostat, reaction coordinate, bias, constraint, Python callbacks and file I/O; it is not a full RPMD/PMF speedup.",
+    "CPU affinity is fixed but CPU frequency and other users' activity are not controlled."
+  ],
+  "results": [
+    {
+      "beads": 32,
+      "dt_fs": 0.1,
+      "scope": "free_ring_continuous",
+      "methods": {
+        "dense_repository_cayley": {
+          "median_us": 26.61258196872125,
+          "min_us": 25.220822631094755,
+          "max_us": 32.535870101195954,
+          "median_cpu_us": 26.53670653173873
+        },
+        "dense_cached_cayley": {
+          "median_us": 17.967047421540165,
+          "min_us": 17.417555371215265,
+          "max_us": 20.795221484861052,
+          "median_cpu_us": 17.89451126780034
+        },
+        "fftw_cayley": {
+          "median_us": 3.630532731488333,
+          "min_us": 3.031759779981254,
+          "max_us": 4.402705959252133,
+          "median_cpu_us": 3.614671205169965
+        },
+        "cyclic_production_cayley": {
+          "median_us": 1.101830599850901,
+          "min_us": 1.0526355346655272,
+          "max_us": 1.3236372347582595,
+          "median_cpu_us": 1.097414404422061
+        },
+        "cyclic_before": {
+          "median_us": 1.2454387367290454,
+          "min_us": 1.2212783182550502,
+          "max_us": 1.3779973767918372,
+          "median_cpu_us": 1.2407568058825973
+        },
+        "user_step_b": {
+          "median_us": 1.3809701948965685,
+          "min_us": 1.3248050591116085,
+          "max_us": 1.6103097736363337,
+          "median_cpu_us": 1.3771508980310911
+        }
+      }
+    },
+    {
+      "beads": 128,
+      "dt_fs": 0.1,
+      "scope": "free_ring_continuous",
+      "methods": {
+        "dense_repository_cayley": {
+          "median_us": 357.1759352750809,
+          "min_us": 345.93370873786404,
+          "max_us": 426.4151941747573,
+          "median_cpu_us": 355.74757281553315
+        },
+        "dense_cached_cayley": {
+          "median_us": 294.1590619266055,
+          "min_us": 263.6076559633027,
+          "max_us": 312.284502293578,
+          "median_cpu_us": 292.88532110091666
+        },
+        "fftw_cayley": {
+          "median_us": 9.320934358589646,
+          "min_us": 8.965206551637909,
+          "max_us": 10.81193823455864,
+          "median_cpu_us": 9.28357089272309
+        },
+        "cyclic_production_cayley": {
+          "median_us": 4.750922611915914,
+          "min_us": 4.573593508332425,
+          "max_us": 5.621190774425444,
+          "median_cpu_us": 4.731891950767887
+        },
+        "cyclic_before": {
+          "median_us": 5.179893428501107,
+          "min_us": 4.917627738124538,
+          "max_us": 6.758487447698744,
+          "median_cpu_us": 5.159488063007591
+        },
+        "user_step_b": {
+          "median_us": 6.462660154862542,
+          "min_us": 5.644892519713006,
+          "max_us": 7.124358172906159,
+          "median_cpu_us": 6.435248987710421
+        }
+      }
+    },
+    {
+      "beads": 512,
+      "dt_fs": 0.1,
+      "scope": "free_ring_continuous",
+      "methods": {
+        "dense_repository_cayley": {
+          "median_us": 11479.4575,
+          "min_us": 10714.336142857144,
+          "max_us": 12331.233642857143,
+          "median_cpu_us": 11423.428571428623
+        },
+        "dense_cached_cayley": {
+          "median_us": 9237.5326875,
+          "min_us": 8931.427,
+          "max_us": 10462.945062499999,
+          "median_cpu_us": 9194.9375
+        },
+        "fftw_cayley": {
+          "median_us": 48.716916629711754,
+          "min_us": 47.338107760532154,
+          "max_us": 69.11273037694014,
+          "median_cpu_us": 48.5068736141904
+        },
+        "cyclic_production_cayley": {
+          "median_us": 17.64028310502283,
+          "min_us": 16.421311332503112,
+          "max_us": 22.7117200083022,
+          "median_cpu_us": 17.564964715649726
+        },
+        "cyclic_before": {
+          "median_us": 22.021736893440625,
+          "min_us": 20.71718336990978,
+          "max_us": 27.98510314557425,
+          "median_cpu_us": 21.930504754937587
+        },
+        "user_step_b": {
+          "median_us": 24.662532896224285,
+          "min_us": 24.52110739317206,
+          "max_us": 32.70128103097445,
+          "median_cpu_us": 24.56658376667424
+        }
+      }
+    },
+    {
+      "beads": 32,
+      "dt_fs": 0.5,
+      "scope": "free_ring_continuous",
+      "methods": {
+        "dense_repository_cayley": {
+          "median_us": 26.0182835382639,
+          "min_us": 24.902908423563957,
+          "max_us": 31.146605065149572,
+          "median_cpu_us": 25.900715727656443
+        },
+        "dense_cached_cayley": {
+          "median_us": 17.98446191687871,
+          "min_us": 17.419993723494485,
+          "max_us": 21.698546564885497,
+          "median_cpu_us": 17.91043256997487
+        },
+        "fftw_cayley": {
+          "median_us": 3.7208032967032962,
+          "min_us": 3.104924146124146,
+          "max_us": 4.424645173745173,
+          "median_cpu_us": 3.704068904068991
+        },
+        "cyclic_production_cayley": {
+          "median_us": 1.151461572921333,
+          "min_us": 1.0363895423338578,
+          "max_us": 1.2561331951201726,
+          "median_cpu_us": 1.1464156604540088
+        },
+        "cyclic_before": {
+          "median_us": 1.4696420233463034,
+          "min_us": 1.2559588660366872,
+          "max_us": 1.5976876042245693,
+          "median_cpu_us": 1.4652584769310575
+        },
+        "user_step_b": {
+          "median_us": 1.5430805053183565,
+          "min_us": 1.412863182671394,
+          "max_us": 1.8613424008580877,
+          "median_cpu_us": 1.5359473229449068
+        }
+      }
+    },
+    {
+      "beads": 128,
+      "dt_fs": 0.5,
+      "scope": "free_ring_continuous",
+      "methods": {
+        "dense_repository_cayley": {
+          "median_us": 375.3485459459459,
+          "min_us": 368.4903972972973,
+          "max_us": 477.40196216216214,
+          "median_cpu_us": 373.71351351351115
+        },
+        "dense_cached_cayley": {
+          "median_us": 272.71129101562497,
+          "min_us": 270.51800976562504,
+          "max_us": 317.93503515625,
+          "median_cpu_us": 271.6406249999998
+        },
+        "fftw_cayley": {
+          "median_us": 9.455579713661734,
+          "min_us": 9.21298119388498,
+          "max_us": 12.816660883280756,
+          "median_cpu_us": 9.413977190002512
+        },
+        "cyclic_production_cayley": {
+          "median_us": 4.254153207432536,
+          "min_us": 4.012324489899246,
+          "max_us": 5.124570755911093,
+          "median_cpu_us": 4.23684876715119
+        },
+        "cyclic_before": {
+          "median_us": 6.619242424242424,
+          "min_us": 5.513744395629153,
+          "max_us": 7.331001408133378,
+          "median_cpu_us": 6.588994029514425
+        },
+        "user_step_b": {
+          "median_us": 5.811382562640048,
+          "min_us": 5.675269199429619,
+          "max_us": 7.3334603279690365,
+          "median_cpu_us": 5.788093298023927
+        }
+      }
+    },
+    {
+      "beads": 512,
+      "dt_fs": 0.5,
+      "scope": "free_ring_continuous",
+      "methods": {
+        "dense_repository_cayley": {
+          "median_us": 10683.966615384614,
+          "min_us": 10593.173153846154,
+          "max_us": 12924.708307692308,
+          "median_cpu_us": 10634.769230769063
+        },
+        "dense_cached_cayley": {
+          "median_us": 9395.442142857144,
+          "min_us": 8936.929214285714,
+          "max_us": 10434.741285714284,
+          "median_cpu_us": 9352.142857143062
+        },
+        "fftw_cayley": {
+          "median_us": 55.2009190628328,
+          "min_us": 46.08942119275825,
+          "max_us": 70.26915441959531,
+          "median_cpu_us": 54.958998935035495
+        },
+        "cyclic_production_cayley": {
+          "median_us": 17.651018974358973,
+          "min_us": 17.044745384615382,
+          "max_us": 20.217606153846155,
+          "median_cpu_us": 17.577179487179325
+        },
+        "cyclic_before": {
+          "median_us": 20.147740751362207,
+          "min_us": 19.65682248351018,
+          "max_us": 21.325590765701175,
+          "median_cpu_us": 20.06796673358129
+        },
+        "user_step_b": {
+          "median_us": 23.980891180203045,
+          "min_us": 22.733139593908632,
+          "max_us": 27.580388007614214,
+          "median_cpu_us": 23.889276649746545
+        }
+      }
+    }
+  ]
+}

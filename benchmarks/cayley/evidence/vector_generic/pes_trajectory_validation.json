@@ -1,0 +1,60 @@
+{
+  "scope": "Short nonlinear-PES NVE equivalence; no convergence or PES accuracy claim",
+  "all_passed": true,
+  "checks": [
+    {
+      "method": "optimized",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.1,
+      "max_abs_dq_bohr": 2.2004620348070603e-13,
+      "max_abs_dv_au": 1.8191425619288742e-14,
+      "passed": true
+    },
+    {
+      "method": "fftw",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.1,
+      "max_abs_dq_bohr": 7.12430114901963e-13,
+      "max_abs_dv_au": 5.926765306473492e-14,
+      "passed": true
+    },
+    {
+      "method": "step_b",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.1,
+      "max_abs_dq_bohr": 7.167599846980011e-13,
+      "max_abs_dv_au": 6.01591431477042e-14,
+      "passed": true
+    },
+    {
+      "method": "optimized",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.5,
+      "max_abs_dq_bohr": 8.236966664298961e-12,
+      "max_abs_dv_au": 5.727098601339914e-14,
+      "passed": true
+    },
+    {
+      "method": "fftw",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.5,
+      "max_abs_dq_bohr": 2.2653878772871394e-11,
+      "max_abs_dv_au": 1.5946553031837766e-13,
+      "passed": true
+    },
+    {
+      "method": "step_b",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.5,
+      "max_abs_dq_bohr": 9.966250047455105e-12,
+      "max_abs_dv_au": 5.199939823427922e-14,
+      "passed": true
+    }
+  ]
+}

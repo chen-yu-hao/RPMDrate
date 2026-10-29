@@ -83,6 +83,46 @@ class CayleyFreeRingTest(unittest.TestCase):
         numpy.testing.assert_allclose(q.mean(axis=2), centroid0 + self.system.dt * velocity_centroid,
                                       rtol=2e-13, atol=2e-13)
 
+    def test_reuses_work_after_atom_mass_and_parameter_changes(self):
+        rng = numpy.random.default_rng(231)
+        for nbeads, natoms, beta, step in (
+            (32, 4, 37.0, 0.013),
+            (32, 4, 37.0, 0.013),  # Same shape/parameters, different masses.
+            (32, 1, 37.0, 0.013),
+            (32, 6, 37.0, 0.013),
+            (32, 1, 73.0, -0.2),
+            (5, 3, 41.0, 0.0),
+            (2, 4, 37.0, 0.013),
+            (1, 2, 37.0, 0.013),
+            (32, 4, 37.0, 0.013),
+        ):
+            with self.subTest(nbeads=nbeads, natoms=natoms, beta=beta, step=step):
+                self.masses = rng.uniform(1.0, 32.0, natoms)
+                self.system.mass[:natoms] = self.masses
+                self.system.beta = beta
+                self.system.dt = step
+                p = numpy.asfortranarray(rng.normal(size=(3, natoms, nbeads)))
+                q = numpy.asfortranarray(rng.normal(size=(3, natoms, nbeads)))
+                p_expected, q_expected = self._explicit_step(p.copy(), q.copy())
+                self.system.free_ring_polymer_cayley_step(p, q)
+                numpy.testing.assert_allclose(p, p_expected, rtol=2e-13, atol=2e-13)
+                numpy.testing.assert_allclose(q, q_expected, rtol=2e-13, atol=2e-13)
+
+    def test_time_reversal(self):
+        rng = numpy.random.default_rng(771)
+        for nbeads in (2, 3, 32):
+            with self.subTest(nbeads=nbeads):
+                p = numpy.asfortranarray(rng.normal(size=(3, 2, nbeads)))
+                q = numpy.asfortranarray(rng.normal(size=(3, 2, nbeads)))
+                p0, q0 = p.copy(), q.copy()
+                for _ in range(200):
+                    self.system.free_ring_polymer_cayley_step(p, q)
+                p *= -1
+                for _ in range(200):
+                    self.system.free_ring_polymer_cayley_step(p, q)
+                numpy.testing.assert_allclose(q, q0, rtol=2e-10, atol=2e-10)
+                numpy.testing.assert_allclose(p, -p0, rtol=2e-10, atol=2e-10)
+
 
 if __name__ == '__main__':
     unittest.main()

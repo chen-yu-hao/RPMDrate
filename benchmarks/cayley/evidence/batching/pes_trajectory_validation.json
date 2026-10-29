@@ -1,0 +1,42 @@
+{
+  "scope": "Short nonlinear-PES NVE equivalence; no convergence or PES accuracy claim",
+  "all_passed": true,
+  "checks": [
+    {
+      "method": "optimized",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.1,
+      "max_abs_dq_bohr": 6.900036098045348e-13,
+      "max_abs_dv_au": 5.821468918148811e-14,
+      "passed": true
+    },
+    {
+      "method": "fftw",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.1,
+      "max_abs_dq_bohr": 2.5052182550666657e-13,
+      "max_abs_dv_au": 2.4936099235072126e-14,
+      "passed": true
+    },
+    {
+      "method": "optimized",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.5,
+      "max_abs_dq_bohr": 8.768985537699336e-12,
+      "max_abs_dv_au": 5.1683218996610064e-14,
+      "passed": true
+    },
+    {
+      "method": "fftw",
+      "beads": 32,
+      "steps": 64,
+      "dt_fs": 0.5,
+      "max_abs_dq_bohr": 1.49036338825681e-11,
+      "max_abs_dv_au": 1.430986619513265e-13,
+      "passed": true
+    }
+  ]
+}
