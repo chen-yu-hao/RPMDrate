@@ -1,0 +1,120 @@
+name: HHOO 512 trajectories: 32 beads, 20ps thermal, impact 6 vs 10
+on:
+  push:
+    branches: ["experiment/hhoo-thermal-impact-512"]
+    paths:
+      - "experiments/hhoo_impact_launch.flag"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hhoo-impact-512
+  cancel-in-progress: false
+
+jobs:
+  collision_shards:
+    name: bmax=${{ matrix.bmax }} bohr, shard=${{ matrix.shard }}, 64 collisions (4 cores)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        bmax: [6, 10]
+        shard: [0, 1, 2, 3]
+    env:
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      OMP_DYNAMIC: "FALSE"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install HHOO numerical dependencies
+        run: python -m pip install -r requirements-drpmd.txt
+      - name: Build C/OpenMP Cayley used as serial per-trajectory kernel
+        run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
+      - name: Verify CPU allocation
+        run: |
+          python - <<'PY'
+          import os
+          n=len(os.sched_getaffinity(0))
+          print("CPU affinity count",n)
+          assert n>=4, f"This experiment requires 4 CPU slots, got {n}"
+          PY
+      - name: Run 64 scattering trajectories with 4 thermal parent chains
+        run: |
+          set -euo pipefail
+          python -m benchmarks.hhoo_collision_batch \
+            --input examples/drpmd/hhoo_smoke.json \
+            --bmax ${{ matrix.bmax }} --shard ${{ matrix.shard }} \
+            --trajectories 64 --parent-chains 4 \
+            --thermal-ps 20 --sampling-fs 1000 \
+            --max-collision-ps 20 --save-fs 10 \
+            --out collision-b${{ matrix.bmax }}-s${{ matrix.shard }} &
+          pid=$!
+          while kill -0 "$pid" 2>/dev/null; do
+            sleep 30
+            echo "Progress bmax=${{ matrix.bmax }} shard=${{ matrix.shard }} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            for i in 0001 0002 0003 0004; do
+              path="collision-b${{ matrix.bmax }}-s${{ matrix.shard }}/chains/chain_$i"
+              if [ -d "$path" ]; then
+                n=$(find "$path" -name 'trajectory_*_final.npz' -type f | wc -l)
+                echo "  chain $i: completed outputs $n / 16"
+              fi
+            done
+          done
+          wait "$pid"
+          cat collision-b${{ matrix.bmax }}-s${{ matrix.shard }}/summary.json
+          cat collision-b${{ matrix.bmax }}-s${{ matrix.shard }}/trajectories.csv
+      - name: Upload trajectory and status files even if the job failed
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hhoo-b${{ matrix.bmax }}-s${{ matrix.shard }}
+          path: collision-b${{ matrix.bmax }}-s${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate_impact:
+    name: Compare 512 trajectories across bmax and product channels
+    needs: [collision_shards]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install analysis dependencies
+        run: python -m pip install -r requirements-drpmd.txt matplotlib
+      - name: Download eight complete shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: hhoo-b*-s*
+          path: all-batches/
+          merge-multiple: false
+      - name: Compute collision branch rates, unknown bounds, b² sampling tests
+        run: |
+          python -m benchmarks.hhoo_impact_report \
+            --input all-batches --out impact-512-summary
+          cat impact-512-summary/rates.csv
+      - name: Show report in Actions summary
+        run: |
+          echo "## H + HO2 preliminary 512-collision impact-parameter comparison" >> "$GITHUB_STEP_SUMMARY"
+          echo "256 trajectories at each bmax=6,10 bohr, four parents per shard, 16 parents per bmax." >> "$GITHUB_STEP_SUMMARY"
+          echo "20ps thermalization, 1ps spacing, 20ps maximum propagation. Unresolved outcomes remain unknown." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat impact-512-summary/rates.csv >> "$GITHUB_STEP_SUMMARY"
+      - name: Save combined report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hhoo-512-impact-summary
+          path: impact-512-summary/
+          retention-days: 30
