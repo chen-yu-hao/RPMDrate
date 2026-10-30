@@ -138,7 +138,8 @@ class _Runtime:
         self.dynamics = core.Dynamics(self.masses, self.temperature, config["nbeads"], self.dt,
                                      self.potential, threads=workers if mode == "bead" else 1,
                                      backend=config.get("dynamics_backend", "auto"),
-                                     block_steps=config.get("native_block_steps", 256))
+                                     block_steps=config.get("native_block_steps", 256),
+                                     classifier_backend=config.get("classifier_backend", "auto"))
         if self.dynamics.engine is not None:
             stack.callback(self.dynamics.engine.close)
         self.classifier = core.ConnectivityClassifier(
@@ -276,6 +277,8 @@ def _worker(config, base, root, mode, workers, slot, identity, provenance, pipe)
                     report["error"] = payload["error"] or "PES/trajectory failed; retiring backend"
                     break
             report["native_block_calls"] = runtime.dynamics.engine.calls if runtime.dynamics.engine else 0
+            report["classifier_backend"] = runtime.dynamics.last_classifier_backend
+            report["native_product_checks"] = runtime.dynamics.engine.classifier_checks if runtime.dynamics.engine else 0
     except BaseException as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         report["traceback"] = traceback.format_exc()

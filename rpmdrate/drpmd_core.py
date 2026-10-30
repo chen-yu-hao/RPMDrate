@@ -164,7 +164,11 @@ class ThermalState:
 class Dynamics:
     """One trajectory, with an external batched PES and reentrant Cayley kernel."""
 
-    def __init__(self, masses, temperature, nbeads, dt, potential, threads=1, native=None, backend="auto", block_steps=256):
+    def __init__(self, masses, temperature, nbeads, dt, potential, threads=1, native=None, backend="auto", block_steps=256, classifier_backend="auto"):
+        if classifier_backend not in ("auto", "python", "native"):
+            raise ValueError("classifier_backend must be auto, python or native")
+        self.classifier_backend = classifier_backend
+        self.last_classifier_backend = "none"
         self.masses = _masses(masses)
         self.temperature = _positive(temperature, "temperature")
         self.beta = 1.0 / (KB * self.temperature)
@@ -179,6 +183,8 @@ class Dynamics:
             raise ValueError("native_block_steps exceeds int32")
         self.engine = select_engine(self, backend)
         self.backend = "native" if self.engine is not None else "python"
+        if classifier_backend == "native" and self.engine is None:
+            raise ValueError("Native product checks require native CPU dynamics")
 
     def step(self, p, q, gradient, constraints=None):
         self.integrator.kick(p, gradient, 0.5 * self.dt)
@@ -414,6 +420,7 @@ def propagate(dynamics, q, p, steps, classifier=None, check_interval=10,
     if dynamics.engine is not None:
         from .drpmd_engine import propagate_native
         return propagate_native(dynamics, q, p, steps, classifier, check_interval, persistence, save_every, observer)
+    dynamics.last_classifier_backend = "python" if classifier is not None else "none"
     values, gradient = dynamics.potential.evaluate(q)
     initial = ring_energy(q, p, dynamics.masses, dynamics.beta, values) / dynamics.nbeads
     if not math.isfinite(initial):
@@ -619,7 +626,7 @@ def _run(config, *, base, mode="serial", workers=1, output="drpmd-results", ther
                "trajectories", "evolution_steps", "initial_separation_bohr", "bmax_bohr", "seed",
                "bond_cutoffs_bohr", "channels", "exit_distance_bohr", "check_interval", "persistence",
                "save_every", "electronic_weight", "potential", "description",
-               "dynamics_backend", "native_block_steps"}
+               "dynamics_backend", "native_block_steps", "classifier_backend"}
     unknown_keys = set(config) - allowed
     if unknown_keys:
         raise ValueError(f"Unknown input keys (possible typo): {sorted(unknown_keys)}")
@@ -686,7 +693,8 @@ def _run(config, *, base, mode="serial", workers=1, output="drpmd-results", ther
         stack.enter_context(threadpool_limits(limits=1, user_api="blas"))
         potential = stack.enter_context(_make_potential(config, base, mode, workers))
         dynamics = Dynamics(masses, temperature, nbeads, dt, potential, threads=workers if mode == "bead" else 1,
-                            backend=config.get("dynamics_backend", "auto"), block_steps=config.get("native_block_steps", 256))
+                            backend=config.get("dynamics_backend", "auto"), block_steps=config.get("native_block_steps", 256),
+                            classifier_backend=config.get("classifier_backend", "auto"))
         if dynamics.engine is not None:
             stack.callback(dynamics.engine.close)
         output.mkdir(parents=True)
@@ -768,6 +776,8 @@ def _run(config, *, base, mode="serial", workers=1, output="drpmd-results", ther
                     "potential": config["potential"], "thermal_steps_at_last_sample": clock,
                     "pes_backend": manifest["pes_backend"], "dynamics_backend": dynamics.backend,
                     "native_block_calls": dynamics.engine.calls if dynamics.engine else 0,
+                    "classifier_backend": dynamics.last_classifier_backend,
+                    "native_product_checks": dynamics.engine.classifier_checks if dynamics.engine else 0,
                     "pes_last_threads_used": getattr(potential, "last_threads_used", None),
                     "timing_seconds": {"wall": time.perf_counter()-started, "thermal_propagation": thermal_seconds,
                                        "collision_propagation_and_trace": production_seconds},

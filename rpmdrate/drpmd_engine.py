@@ -1,7 +1,8 @@
 """Checked Python boundary for native integration blocks (not a per-step loop).
 
 The C loop calls the native C/Fortran PES function pointer directly. Python is
-retained for input, RNG batches, user classifiers, sparse output and scheduling.
+retained for input, RNG batches, custom classifiers, sparse output and scheduling.
+Default product checks and persistence run inside C integration blocks.
 No CUDA/Python PES is silently moved to CPU. Numerical arrays are atomic units.
 """
 from __future__ import annotations
@@ -82,6 +83,7 @@ class NativeEngine:
         self._finalizer = weakref.finalize(self, lib.drpmd_engine_destroy, self.context)
         self.function = ct.cast(self.potential._lib.drpmd_pes_eval, ct.c_void_p)
         self.calls = 0
+        self.classifier_checks = 0
 
     def _check(self, q, p):
         if not self._finalizer.alive:
@@ -97,6 +99,8 @@ class NativeEngine:
         self.potential._check_open()
 
     def _error(self, code, detail):
+        if code == 7:
+            return f"Native product classification failed (status={detail[1]})"
         return (f"Native propagation status={code}, bad_bead={detail[0]}, "
                 f"PES_status={detail[1]}, PES_threads={detail[2]}")
 
@@ -123,7 +127,8 @@ class NativeEngine:
             return values, gradient, energy.value
 
     def advance(self, q, p, values, gradient, steps, reference, energy, drift=0.,
-                group=None, targets=None, refresh=None, first_refresh=0, interval=0):
+                group=None, targets=None, refresh=None, first_refresh=0, interval=0,
+                classifier=None, start_step=0, check_interval=10, persistence=3):
         steps = _positive_integer(steps, "native block steps")
         with self.lock, self.potential._lock:
             self._check(q, p)
@@ -154,10 +159,32 @@ class NativeEngine:
             value, maximum = ct.c_double(energy), ct.c_double(drift)
             done = ct.c_int32()
             detail = np.zeros(3, dtype=np.int32)
-            rc = self.lib.drpmd_engine_advance(
-                self.context, self.function, _pointer(q), _pointer(p), _pointer(values), _pointer(gradient),
-                steps, _ints(group), _doubles(targets), _doubles(refresh), first_refresh, interval, count,
-                reference, ct.byref(value), ct.byref(maximum), ct.byref(done), _ints(detail))
+            if classifier is None:
+                rc = self.lib.drpmd_engine_advance(
+                    self.context, self.function, _pointer(q), _pointer(p), _pointer(values), _pointer(gradient),
+                    steps, _ints(group), _doubles(targets), _doubles(refresh), first_refresh, interval, count,
+                    reference, ct.byref(value), ct.byref(maximum), ct.byref(done), _ints(detail))
+            else:
+                if group is not None or refresh is not None:
+                    raise ValueError("Product checks are only valid during unthermostatted collisions")
+                if (isinstance(start_step, (bool, np.bool_)) or not isinstance(start_step, (int, np.integer)) or
+                        not 0 <= start_step <= np.iinfo(np.int64).max-steps):
+                    raise ValueError("start_step must be a nonnegative int64 with room for the block")
+                check_interval = _positive_integer(check_interval, "check_interval")
+                persistence = _positive_integer(persistence, "persistence")
+                label = ct.c_int32(-1)
+                with classifier.lock:
+                    classifier._check_open()
+                    before = classifier.checks
+                    rc = self.lib.drpmd_engine_advance_classified(
+                        self.context, self.function, _pointer(q), _pointer(p), _pointer(values), _pointer(gradient),
+                        steps, reference, ct.byref(value), ct.byref(maximum), ct.byref(done), _ints(detail),
+                        classifier.context, start_step, check_interval, persistence, ct.byref(label))
+                    self.classifier_checks += classifier.checks-before
+                self.calls += 1
+                self.potential.last_threads_used = int(detail[2])
+                return (done.value, value.value, maximum.value, self._error(rc, detail) if rc else None,
+                        classifier.label(label.value))
             self.calls += 1
             self.potential.last_threads_used = int(detail[2])
             return done.value, value.value, maximum.value, self._error(rc, detail) if rc else None
@@ -197,31 +224,45 @@ class NativeEngine:
 
 def propagate_native(dynamics, q, p, steps, classifier, check_interval, persistence, save_every, observer):
     from .drpmd_core import TrajectoryResult
+    from .drpmd_classifier import select_classifier
     engine = dynamics.engine
-    values, gradient, initial = engine.start(q, p)
-    energy, drift, step = initial, 0.0, 0
-    candidate, streak = None, 0
-    if observer is not None:
-        observer(0, q, p, energy)
-    while step < steps:
-        count = min(steps-step, dynamics.block_steps)
-        if classifier is not None:
-            count = min(count, check_interval-step % check_interval)
+    native = select_classifier(dynamics, classifier)
+    try:
+        values, gradient, initial = engine.start(q, p)
+        energy, drift, step = initial, 0.0, 0
+        candidate, streak = None, 0
         if observer is not None:
-            count = min(count, save_every-step % save_every)
-        done, energy, drift, error = engine.advance(q, p, values, gradient, count, initial, energy, drift)
-        step += done
-        if error:
-            return TrajectoryResult("failed", None, step, initial, energy, drift, q, p, error)
-        label = None
-        if classifier is not None and step % check_interval == 0:
-            label = classifier(q, p)
-            streak = streak+1 if label is not None and label == candidate else (1 if label else 0)
-            candidate = label
-        resolved = label is not None and streak >= persistence
-        if observer is not None and (step % save_every == 0 or step == steps or resolved):
-            observer(step, q, p, energy)
-        if resolved:
-            return TrajectoryResult("nonreactive" if label == "reactants" else "product",
-                                    None if label == "reactants" else label, step, initial, energy, drift, q, p)
-    return TrajectoryResult("unresolved", None, steps, initial, energy, drift, q, p)
+            observer(0, q, p, energy)
+        while step < steps:
+            count = min(steps-step, dynamics.block_steps)
+            # Native checks do NOT cut the C block. Only custom Python callbacks,
+            # observation boundaries and the interrupt cap return control here.
+            if classifier is not None and native is None:
+                count = min(count, check_interval-step % check_interval)
+            if observer is not None:
+                count = min(count, save_every-step % save_every)
+            label, resolved = None, False
+            if native is not None:
+                done, energy, drift, error, label = engine.advance(
+                    q, p, values, gradient, count, initial, energy, drift,
+                    classifier=native, start_step=step, check_interval=check_interval, persistence=persistence)
+                resolved = label is not None
+            else:
+                done, energy, drift, error = engine.advance(q, p, values, gradient, count, initial, energy, drift)
+            step += done
+            if error:
+                return TrajectoryResult("failed", None, step, initial, energy, drift, q, p, error)
+            if native is None and classifier is not None and step % check_interval == 0:
+                label = classifier(q, p)
+                streak = streak+1 if label is not None and label == candidate else (1 if label else 0)
+                candidate = label
+                resolved = label is not None and streak >= persistence
+            if observer is not None and (step % save_every == 0 or step == steps or resolved):
+                observer(step, q, p, energy)
+            if resolved:
+                return TrajectoryResult("nonreactive" if label == "reactants" else "product",
+                                        None if label == "reactants" else label, step, initial, energy, drift, q, p)
+        return TrajectoryResult("unresolved", None, steps, initial, energy, drift, q, p)
+    finally:
+        if native is not None:
+            native.close()

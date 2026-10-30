@@ -23,7 +23,7 @@ def __getattr__(name):
 def run(config, *, base=None, mode="serial", workers=1, output="drpmd-results",
         thermal_state=None, trajectory_workers=None, gpu_devices=None,
         trajectories_per_gpu=None, pes_backend=None, dynamics_backend=None,
-        scheduler=None, task_prefetch=None):
+        scheduler=None, task_prefetch=None, classifier_backend=None):
     """Run N collisions, optionally distributed over independent parent chains.
 
     ``workers`` remains the PES/OpenMP worker count PER trajectory in bead mode.
@@ -37,6 +37,10 @@ def run(config, *, base=None, mode="serial", workers=1, output="drpmd-results",
     With no parallel options, the existing single-chain output/API is preserved.
     """
     config, options = normalize_input(config)
+    if classifier_backend is not None:
+        config["classifier_backend"] = classifier_backend
+    if config.get("classifier_backend", "auto") not in ("auto", "python", "native"):
+        raise ValueError("classifier_backend must be auto, python or native")
     if dynamics_backend is not None:
         config["dynamics_backend"] = dynamics_backend
     if config.get("dynamics_backend", "auto") not in ("auto", "python", "native"):
@@ -70,6 +74,8 @@ def main(argv=None):
                         help="CPU PES transport; native also requires potential.native_library")
     parser.add_argument("--dynamics-backend", choices=("auto", "python", "native"),
                         help="Native C integration blocks require the native CPU PES; auto selects when available")
+    parser.add_argument("--classifier-backend", choices=("auto", "python", "native"),
+                        help="Built-in product checks inside C dynamics; auto selects C for native CPU propagation")
     parser.add_argument("--trajectory-workers", type=int,
                         help="Persistent task workers and independent physical thermal chains")
     parser.add_argument("--scheduler", choices=("dynamic", "static"),
@@ -96,7 +102,7 @@ def main(argv=None):
                       output=args.output, thermal_state=args.thermal_state,
                       trajectory_workers=args.trajectory_workers, gpu_devices=args.gpu_devices,
                       trajectories_per_gpu=args.trajectories_per_gpu, pes_backend=args.pes_backend,
-                      dynamics_backend=args.dynamics_backend, scheduler=args.scheduler, task_prefetch=args.task_prefetch)
+                      dynamics_backend=args.dynamics_backend, scheduler=args.scheduler, task_prefetch=args.task_prefetch, classifier_backend=args.classifier_backend)
     except KeyboardInterrupt:
         print("dRPMD interrupted; workers stopped and partial ensemble results retained", file=sys.stderr)
         return 130
