@@ -4,7 +4,8 @@ on:
   push:
     paths:
       - "rpmdrate/drpmd*.py"
-      - "rpmdrate/_drpmd_native.c"
+      - "rpmdrate/_drpmd*.c"
+      - "rpmdrate/_drpmd*.h"
       - "rpmdrate/_main.f90"
       - "rpmdrate/_math.f90"
       - "rpmdrate/_surface.f90"
@@ -15,6 +16,8 @@ on:
       - "examples/H-H-O-O/pes/hhoo_drpmd_omp.f90"
       - "examples/native_pes/**"
       - "benchmarks/pes/**"
+      - "benchmarks/classifier/**"
+      - "benchmarks/scheduling/**"
       - "examples/drpmd/**"
       - "requirements-drpmd*.txt"
       - "Makefile"
@@ -22,7 +25,8 @@ on:
   pull_request:
     paths:
       - "rpmdrate/drpmd*.py"
-      - "rpmdrate/_drpmd_native.c"
+      - "rpmdrate/_drpmd*.c"
+      - "rpmdrate/_drpmd*.h"
       - "rpmdrate/_main.f90"
       - "rpmdrate/_math.f90"
       - "rpmdrate/_surface.f90"
@@ -33,6 +37,8 @@ on:
       - "examples/H-H-O-O/pes/hhoo_drpmd_omp.f90"
       - "examples/native_pes/**"
       - "benchmarks/pes/**"
+      - "benchmarks/classifier/**"
+      - "benchmarks/scheduling/**"
       - "examples/drpmd/**"
       - "requirements-drpmd*.txt"
       - "Makefile"
@@ -76,6 +82,28 @@ jobs:
         run: python -m rpmdrate.drpmd_integrator --build --compiler gcc
       - name: Run direct-RPMD regressions
         run: python -m unittest discover -s tests -t . -p 'drpmd*test.py' -v
+      - name: Compare C-internal product checks with Python checks on HHOO
+        if: matrix.python == '3.12'
+        env:
+          OMP_WAIT_POLICY: PASSIVE
+        run: python benchmarks/classifier/run.py --beads 32 128 --threads 1 2 --check-intervals 1 10 --steps 1000 --rounds 3 --output classifier-benchmark.json
+      - name: Retain product-check benchmark evidence
+        if: matrix.python == '3.12'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: classifier-benchmark-${{ github.run_id }}
+          path: classifier-benchmark.json
+          if-no-files-found: error
+      - name: Dynamic scheduling imbalance regression (synthetic workload)
+        if: matrix.python == '3.12'
+        run: python benchmarks/scheduling/run.py --workers 4 --trajectories 16 --rounds 3 --output scheduler-benchmark.json
+      - name: Retain raw scheduling measurements
+        if: matrix.python == '3.12'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scheduler-benchmark-${{ github.run_id }}
+          path: scheduler-benchmark.json
+          if-no-files-found: error
       - name: Benchmark identical HHOO kernels through CPU transports
         if: matrix.python == '3.12'
         run: python benchmarks/pes/run.py --kernel hhoo --workers 2 --beads 32 128 512 --calls 100 --rounds 5 --nve-steps 64 --output pes-benchmark.json

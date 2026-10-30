@@ -155,7 +155,7 @@ def _preflight(config, base, plan, states):
                "trajectories", "evolution_steps", "initial_separation_bohr", "bmax_bohr", "seed",
                "bond_cutoffs_bohr", "channels", "exit_distance_bohr", "check_interval", "persistence",
                "save_every", "electronic_weight", "potential", "description",
-               "dynamics_backend", "native_block_steps"}
+               "dynamics_backend", "native_block_steps", "classifier_backend"}
     if set(config) - allowed:
         raise ValueError(f"Unknown input keys: {sorted(set(config) - allowed)}")
     if config.get("dynamics_backend", "auto") not in ("auto", "python", "native"):
@@ -184,6 +184,13 @@ def _preflight(config, base, plan, states):
     core._positive(config.get("electronic_weight", 1.), "electronic_weight", zero=True)
     core.ConnectivityClassifier(config["atoms"], fragments, masses, config["bond_cutoffs_bohr"],
                                 config["channels"], config["exit_distance_bohr"])
+    classifier_backend = config.get("classifier_backend", "auto")
+    if classifier_backend not in ("auto", "python", "native"):
+        raise ValueError("classifier_backend must be auto, python or native")
+    if classifier_backend == "native" and (plan["mode"] == "gpu" or
+        config.get("dynamics_backend", "auto") == "python" or
+        core._cpu_pes_backend(config["potential"]) != "native"):
+        raise ValueError("Native product checks require native CPU dynamics and PES")
     kind = config["potential"].get("type", "module")
     if kind not in ("hhoo", "module", "torchscript"):
         raise ValueError(f"Unknown potential type: {kind}")

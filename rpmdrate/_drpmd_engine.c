@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include "_drpmd_classifier.h"
 
 typedef int32_t (*pes_fn)(int32_t,int32_t,const double*,double*,double*,
                          int32_t,int32_t*,int32_t*);
@@ -27,7 +28,8 @@ typedef struct {
 
 /* detail = {bad_bead (zero based or -1), PES status, actual PES threads}.
  * Return codes: 0 success, 1 invalid argument, 2 allocation, 3 factorization,
- * 4 PES status/unwritten output, 5 nonfinite state/energy, 6 wrong team size.
+ * 4 PES status/unwritten output, 5 nonfinite state/energy, 6 wrong team size,
+ * 7 invalid/nonfinite product-check intermediate (state remains at completed step).
  */
 int32_t drpmd_engine_abi_version(void) { return 1; }
 
@@ -179,10 +181,11 @@ int32_t drpmd_engine_start(void *ptr,pes_fn pes,const double *q,const double *p,
     return isfinite(*value) ? 0 : 5;
 }
 
-int32_t drpmd_engine_advance(void *ptr,pes_fn pes,double *q,double *p,
+static int32_t advance_impl(void *ptr,pes_fn pes,double *q,double *p,
     double *v,double *g,int32_t steps,const int32_t *group,const double *targets,
     const double *refresh,int32_t first_refresh,int32_t interval,int32_t nrefresh,
-    double reference,double *value,double *drift,int32_t *done,int32_t *detail) {
+    double reference,double *value,double *drift,int32_t *done,int32_t *detail,
+    void *classifier,int64_t start_step,int32_t check_interval,int32_t persistence,int32_t *label) {
     engine *e=ptr;
     if (!e || !pes || !q || !p || !v || !g || !done || !detail || !value || !drift) return 1;
     *done=0;
@@ -202,6 +205,10 @@ int32_t drpmd_engine_advance(void *ptr,pes_fn pes,double *q,double *p,
     if (nrefresh && ((int64_t)first_refresh+(int64_t)(nrefresh-1)*interval>steps ||
         (int64_t)first_refresh+(int64_t)nrefresh*interval<=steps ||
         !finite_array(refresh,(size_t)nrefresh*e->size))) return 1;
+    if (classifier && (group || nrefresh || !label || start_step<0 || start_step>INT64_MAX-steps ||
+        check_interval<1 || persistence<1 ||
+        !drpmd_classifier_dimensions(classifier,e->atoms,e->beads))) return 1;
+    if (label) *label=-1;
     int random_index=0;
     for (int s=0;s<steps;++s) {
         memcpy(e->old_q,q,e->size*sizeof(double)); memcpy(e->old_p,p,e->size*sizeof(double));
@@ -230,6 +237,31 @@ int32_t drpmd_engine_advance(void *ptr,pes_fn pes,double *q,double *p,
             return rc;
         }
         *done=s+1;
+        if (classifier && (start_step+s+1)%check_interval==0) {
+            int check=drpmd_classifier_observe(classifier,q,p,persistence,label);
+            if (check) { detail[0]=-1; detail[1]=check; return 7; }
+            if (*label>=0) return 0; /* Stop on the actual confirming step. */
+        }
     }
     return 0;
+}
+
+/* Preserve the v1 entry point for unconstrained/NVT blocks and custom callbacks. */
+int32_t drpmd_engine_advance(void *ptr,pes_fn pes,double *q,double *p,
+    double *v,double *g,int32_t steps,const int32_t *group,const double *targets,
+    const double *refresh,int32_t first_refresh,int32_t interval,int32_t nrefresh,
+    double reference,double *value,double *drift,int32_t *done,int32_t *detail) {
+    return advance_impl(ptr,pes,q,p,v,g,steps,group,targets,refresh,first_refresh,interval,nrefresh,
+                        reference,value,drift,done,detail,NULL,0,0,0,NULL);
+}
+
+/* No Python re-entry at product checks. A fresh classifier owns the streak for
+ * one collision; its state persists across output/interrupt block boundaries. */
+int32_t drpmd_engine_advance_classified(void *ptr,pes_fn pes,double *q,double *p,
+    double *v,double *g,int32_t steps,double reference,double *value,double *drift,
+    int32_t *done,int32_t *detail,void *classifier,int64_t start_step,
+    int32_t check_interval,int32_t persistence,int32_t *label) {
+    if (!classifier || !label) return 1;
+    return advance_impl(ptr,pes,q,p,v,g,steps,NULL,NULL,NULL,0,0,0,
+                        reference,value,drift,done,detail,classifier,start_step,check_interval,persistence,label);
 }

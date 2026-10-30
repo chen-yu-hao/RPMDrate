@@ -16,3 +16,5 @@ RPMDrate User's Guide
     drpmd_parallel
     drpmd_pes
     drpmd_native
+    drpmd_dynamic
+    drpmd_classifier
